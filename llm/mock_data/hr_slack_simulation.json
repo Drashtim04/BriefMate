@@ -1,0 +1,108 @@
+{
+  "general": [],
+  "hr_discussions": [
+    {
+      "userId": "U0_SARAH_HR",
+      "text": "Hi <@U0_ALEX_ENG>, checking in before our review. I noticed you have been quieter in team channels. How are things going?",
+      "timestamp": "1762501200.000000",
+      "threadTs": null,
+      "reactions": [],
+      "realName": "Sarah Jenkins"
+    },
+    {
+      "userId": "U0_ALEX_ENG",
+      "text": "Thanks for reaching out. I have been overloaded for weeks and the workload still feels unsustainable. I am mostly responding only when directly tagged.",
+      "timestamp": "1762501860.000000",
+      "threadTs": null,
+      "reactions": [],
+      "realName": "Alex Chen"
+    },
+    {
+      "userId": "U0_SARAH_HR",
+      "text": "I am sorry to hear that. Have you discussed this with your manager and gotten support?",
+      "timestamp": "1762502280.000000",
+      "threadTs": null,
+      "reactions": [],
+      "realName": "Sarah Jenkins"
+    },
+    {
+      "userId": "U0_ALEX_ENG",
+      "text": "Yes, but there is ongoing manager conflict on priorities. I was passed over for promotion without explanation and it is hard to stay motivated.",
+      "timestamp": "1762502760.000000",
+      "threadTs": "1762502760.000000",
+      "reactions": [],
+      "realName": "Alex Chen"
+    },
+    {
+      "userId": "U0_SARAH_HR",
+      "text": "Thanks for sharing this clearly. Let us document actions and timelines. Would a three-way meeting with your manager help this week?",
+      "timestamp": "1762503180.000000",
+      "threadTs": "1762502760.000000",
+      "reactions": [
+        {
+          "name": "white_check_mark",
+          "users": ["U0_ALEX_ENG"],
+          "count": 1
+        }
+      ],
+      "realName": "Sarah Jenkins"
+    },
+    {
+      "userId": "U0_ALEX_ENG",
+      "text": "Yes please. I also need written promotion criteria because my career path is unclear right now.",
+      "timestamp": "1762503540.000000",
+      "threadTs": "1762502760.000000",
+      "reactions": [],
+      "realName": "Alex Chen"
+    },
+    {
+      "userId": "U0_ALEX_ENG",
+      "text": "If this does not improve soon, I will need to reassess my options. I do not want to continue in this state another quarter.",
+      "timestamp": "1762589200.000000",
+      "threadTs": null,
+      "reactions": [],
+      "realName": "Alex Chen"
+    },
+    {
+      "userId": "U0_SARAH_HR",
+      "text": "Understood. Let us meet tomorrow with a concrete recovery plan and ownership matrix.",
+      "timestamp": "1762589800.000000",
+      "threadTs": "1762589200.000000",
+      "reactions": [
+        {
+          "name": "eyes",
+          "users": ["U0_ALEX_ENG"],
+          "count": 1
+        }
+      ],
+      "realName": "Sarah Jenkins"
+    }
+  ],
+  "members": [
+    {
+      "userId": "U0_SARAH_HR",
+      "name": "sarah.jenkins",
+      "realName": "Sarah Jenkins",
+      "displayName": "Sarah Jenkins (HRBP)",
+      "email": "sarah.jenkins@company.com",
+      "profileImage": "https://avatars.slack-edge.com/hr_sarah.jpg"
+    },
+    {
+      "userId": "U0_ALEX_ENG",
+      "name": "alex.chen",
+      "realName": "Alex Chen",
+      "displayName": "Alex Chen",
+      "email": "alex.chen@company.com",
+      "profileImage": "https://avatars.slack-edge.com/eng_alex.jpg"
+    }
+  ],
+  "summary": {
+    "totalMessages": 8,
+    "messagesByMember": {
+      "Sarah Jenkins": 4,
+      "Alex Chen": 4
+    },
+    "mostActiveChannel": "hr_discussions",
+    "fetchedAt": "2026-03-13T11:58:00.000Z"
+  }
+}
