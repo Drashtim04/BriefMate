@@ -1,0 +1,217 @@
+/employee directory 
+
+{
+    "ok": true,
+    "data": {
+        "fields": [
+            {
+                "id": "displayName",
+                "type": "text",
+                "name": "Display name"
+            },
+            {
+                "id": "firstName",
+                "type": "text",
+                "name": "First name"
+            },
+            {
+                "id": "lastName",
+                "type": "text",
+                "name": "Last name"
+            },
+            {
+                "id": "preferredName",
+                "type": "text",
+                "name": "Preferred name"
+            },
+            {
+                "id": "jobTitle",
+                "type": "list",
+                "name": "Job title"
+            },
+            {
+                "id": "workPhone",
+                "type": "text",
+                "name": "Work Phone"
+            },
+            {
+                "id": "mobilePhone",
+                "type": "text",
+                "name": "Mobile Phone"
+            },
+            {
+                "id": "workEmail",
+                "type": "email",
+                "name": "Work Email"
+            },
+            {
+                "id": "department",
+                "type": "list",
+                "name": "Department"
+            },
+            {
+                "id": "location",
+                "type": "list",
+                "name": "Location"
+            },
+            {
+                "id": "division",
+                "type": "list",
+                "name": "Division"
+            },
+            {
+                "id": "facebook",
+                "type": "text",
+                "name": "Facebook URL"
+            },
+            {
+                "id": "linkedIn",
+                "type": "text",
+                "name": "LinkedIn URL"
+            },
+            {
+                "id": "twitterFeed",
+                "type": "text",
+                "name": "Twitter Feed"
+            },
+            {
+                "id": "pronouns",
+                "type": "list",
+                "name": "Pronouns"
+            },
+            {
+                "id": "workPhoneExtension",
+                "type": "text",
+                "name": "Work Ext."
+            },
+            {
+                "id": "supervisor",
+                "type": "employee",
+                "name": "Manager"
+            },
+            {
+                "id": "photoUploaded",
+                "type": "bool",
+                "name": "Employee photo exists"
+            },
+            {
+                "id": "photoUrl",
+                "type": "url",
+                "name": "Employee photo url"
+            },
+            {
+                "type": "bool",
+                "name": "",
+                "id": "canUploadPhoto"
+            }
+        ],
+        "employees": [
+            {
+                "id": "4",
+                "displayName": "Charlotte Abbott",
+                "firstName": "Charlotte",
+                "lastName": "Abbott",
+                "preferredName": null,
+                "jobTitle": "Sr. HR Administrator",
+                "workPhone": "801-724-6600",
+                "mobilePhone": "415-555-8965",
+                "workEmail": "cabbott@efficientoffice.com",
+                "department": "Human Resources",
+                "location": "London, UK",
+                "division": "Europe",
+                "facebook": "www.facebook.com",
+                "linkedIn": "www.linkedin.com",
+                "twitterFeed": "@twitter",
+                "pronouns": null,
+                "workPhoneExtension": "1272",
+                "supervisor": "Jennifer Caldwell",
+                "photoUploaded": true,
+                "photoUrl": "https://images4.bamboohr.com/757152/photos/4-0-4.jpg?Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly9pbWFnZXM0LmJhbWJvb2hyLmNvbS83NTcxNTIvKiIsIkNvbmRpdGlvbiI6eyJEYXRlR3JlYXRlclRoYW4iOnsiQVdTOkVwb2NoVGltZSI6MTc3MzM5NDEwMn0sIkRhdGVMZXNzVGhhbiI6eyJBV1M6RXBvY2hUaW1lIjoxNzc1OTg2MTEyfX19XX0_&Signature=XBLXBhrV~gB5tgDXaMKoQxFbA2l8Z4ZDr-Lpdj2T-AKDxkXFhoVJHWMFrOJUeZkoHc4YhMt8FBJVyP74QaIhXiEMVd-7YmkNu0i1Z-j9JeQS6LfPQPWpXVvocsMl4DqJBS5isiFnPlJ5tZkARbag28YmxO8qaMIyycT0X9nz1dYWI~F62lAM8kdn6Ubr5HlUFm7TB08bCpzCrWR6emYi7TDu73JSISjFus74lWRMYdBo1~x7W9UoJdT2lHdXngYfp3jbwPqC3KC1g3-2uT1g~4QPovah4xZaXZn5DAMxPSpuWinekU0REtsgwJZSu2lvqit032JBw7hAARi32DcCYw__&Key-Pair-Id=APKAIZ7QQNDH4DJY7K4Q",
+                "canUploadPhoto": 1
+            },
+           
+
+
+/meta/fields
+
+{
+    "ok": true,
+    "data": [
+        {
+            "id": "4340.4",
+            "name": "401(k) - Company pays",
+            "type": "text"
+        },
+        
+        {
+            "id": 634,
+            "name": "Work Phone",
+            "type": "phone",
+            "alias": "workPhone"
+        },
+        {
+            "id": "4453.4",
+            "name": "Workplace Pension Plan - Company pays",
+            "type": "text"
+        },
+        {
+            "id": "4453.7",
+            "name": "Workplace Pension Plan - Company pays - Currency code",
+            "type": "new_benefit"
+        },
+        {
+            "id": "4453.2",
+            "name": "Workplace Pension Plan - Coverage",
+            "type": "employee_new_benefit_coverage_type"
+        },
+        {
+            "id": "4453.1",
+            "name": "Workplace Pension Plan - Effective date",
+            "type": "date"
+        },
+        {
+            "id": "4453.5",
+            "name": "Workplace Pension Plan - Eligibility date",
+            "type": "date"
+        },
+        {
+            "id": "4453.3",
+            "name": "Workplace Pension Plan - Employee pays",
+            "type": "text"
+        },
+        {
+            "id": "4453.6",
+            "name": "Workplace Pension Plan - Employee pays - Currency code",
+            "type": "new_benefit"
+        },
+        {
+            "id": 4453,
+            "name": "Workplace Pension Plan - Status",
+            "type": "new_benefit_status"
+        },
+        {
+            "id": 12,
+            "name": "Zip Code",
+            "type": "text",
+            "alias": "zipcode"
+        },
+        {
+            "id": -38,
+            "name": "Termination Date",
+            "type": "date",
+            "alias": "terminationDate"
+        },
+        {
+            "id": -50,
+            "name": "Job Level",
+            "type": "text",
+            "alias": "jobLevel"
+        },
+        {
+            "id": -49,
+            "name": "Pay Band",
+            "type": "pay_band",
+            "alias": "payBand"
+        }
+    ]
+}
