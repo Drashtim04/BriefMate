@@ -17,12 +17,6 @@ const LANDING_NAV_ITEMS = [
   { name: "Meeting Summary", path: "/meeting-summary" },
 ];
 
-const NOTIFICATIONS = [
-  { id: 1, text: "Sentiment dropped for Rahul Sharma", type: "alert",   time: "2 mins ago"  },
-  { id: 2, text: "Meeting scheduled with Priya Patel", type: "info",    time: "1 hour ago"  },
-  { id: 3, text: "New transcript available",            type: "success", time: "3 hours ago" },
-];
-
 function useOutsideClick(ref, callback) {
   useEffect(() => {
     function handler(e) {
@@ -38,9 +32,11 @@ export function Navbar() {
   const navigate  = useNavigate();
   const isLanding = location.pathname === "/";
 
+  const [notifications] = useState([]);
+  const [currentUser, setCurrentUser] = useState({ name: "", email: "" });
   const [isAvatarOpen,   setIsAvatarOpen]   = useState(false);
   const [isNotifOpen,    setIsNotifOpen]    = useState(false);
-  const [hasUnread,      setHasUnread]      = useState(true);   // red dot state
+  const [hasUnread,      setHasUnread]      = useState(false);
   const [isMobileOpen,   setIsMobileOpen]   = useState(false);
 
   const avatarRef = useRef(null);
@@ -48,6 +44,24 @@ export function Navbar() {
 
   useOutsideClick(avatarRef, () => setIsAvatarOpen(false));
   useOutsideClick(notifRef,  () => setIsNotifOpen(false));
+
+  useEffect(() => {
+    try {
+      const name = window.localStorage.getItem("userName") || "";
+      const email = window.localStorage.getItem("userEmail") || "";
+      setCurrentUser({ name, email });
+    } catch (_err) {
+      setCurrentUser({ name: "", email: "" });
+    }
+  }, []);
+
+  const avatarText = currentUser.name
+    ? currentUser.name
+        .split(" ")
+        .map((part) => part[0] || "")
+        .join("")
+        .toUpperCase()
+    : "";
 
   // Toggle notification panel; clear dot as soon as it opens
   function handleNotifToggle() {
@@ -144,9 +158,9 @@ export function Navbar() {
               <div className={`absolute right-0 mt-2 w-80 rounded-xl overflow-hidden ${dropdownBg}`}>
                 <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
                   <span className="text-sm font-semibold text-gray-700">Notifications</span>
-                  <span className="text-xs text-gray-400">{NOTIFICATIONS.length} notifications</span>
+                  <span className="text-xs text-gray-400">{notifications.length} notifications</span>
                 </div>
-                {NOTIFICATIONS.map((n) => (
+                {notifications.map((n) => (
                   <div
                     key={n.id}
                     className="px-4 py-3 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors last:border-0"
@@ -159,6 +173,9 @@ export function Navbar() {
                     <p className="text-xs text-gray-400 mt-0.5">{n.time}</p>
                   </div>
                 ))}
+                {notifications.length === 0 && (
+                  <div className="px-4 py-6 text-sm text-gray-500 text-center">No notifications available.</div>
+                )}
                 <div className="px-4 py-2 bg-gray-50 text-center">
                   <button className="text-xs text-[#1f7a6c] hover:underline font-medium">
                     View all notifications
@@ -176,15 +193,15 @@ export function Navbar() {
               aria-label="User menu"
             >
               <div className="w-8 h-8 rounded-full flex items-center justify-center font-medium text-sm bg-[#1f7a6c]/10 text-[#1f7a6c]">
-                AR
+                {avatarText}
               </div>
             </button>
 
             {isAvatarOpen && (
               <div className={`absolute right-0 mt-2 w-48 rounded-xl overflow-hidden ${dropdownBg}`}>
                 <div className="px-4 py-3 border-b border-gray-100">
-                  <p className="text-sm font-semibold text-gray-800">Alex Rivera</p>
-                  <p className="text-xs text-gray-400 truncate">alex.rivera@company.com</p>
+                  <p className="text-sm font-semibold text-gray-800">{currentUser.name}</p>
+                  <p className="text-xs text-gray-400 truncate">{currentUser.email}</p>
                 </div>
                 <Link
                   to="/profile"

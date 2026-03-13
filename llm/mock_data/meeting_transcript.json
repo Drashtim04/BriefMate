@@ -1,256 +1,286 @@
 {
-  "meeting_brief": {
-    "previous_meeting": "Quarterly Wellbeing and Career Progression Check-in",
-    "date": "2026-02-18",
-    "meeting_objective": "Review wellbeing, clarify promotion path, and agree on immediate retention actions.",
-    "attendees": [
-      {
-        "name": "Sarah Jenkins",
-        "role": "HR Business Partner"
+  "sourceSystem": "Mock HR meeting transcript seeds",
+  "fetchedAt": "2026-03-13T19:21:26.822Z",
+  "meetings": [
+    {
+      "meetingId": "harshdshah333@gmail.com:latest",
+      "employeeEmail": "harshdshah333@gmail.com",
+      "meeting_brief": {
+        "previous_meeting": "HR and Engagement Review",
+        "date": "2026-03-13",
+        "meeting_objective": "Conduct a structured HR check-in and capture actions for growth and wellbeing.",
+        "attendees": [
+          {
+            "name": "HR",
+            "role": "HR"
+          },
+          {
+            "name": "Harsh Shah",
+            "role": "Employee"
+          }
+        ],
+        "key_takeaways": [
+          "Harsh Shah discussed current workload and team priorities for the coming sprint.",
+          "HR and Harsh Shah aligned on growth expectations for the current role.",
+          "An action plan was agreed with follow-up checkpoints for Operations."
+        ]
       },
-      {
-        "name": "Alex Chen",
-        "role": "Software Engineer"
-      }
-    ],
-    "key_takeaways": [
-      "Alex reported sustained workload pressure across multiple sprints and described the workload as unsustainable.",
-      "Alex said he was passed over for promotion without a clear explanation and feels undervalued.",
-      "Alex highlighted ongoing manager conflict and uncertainty about his long-term career path on the team.",
-      "Alex requested concrete timelines, role clarity, and short-term workload support to prevent burnout."
-    ],
-    "action_items": [
-      {
-        "owner": "Sarah",
-        "task": "Coordinate with Engineering Director and manager to provide documented promotion criteria and timeline within 10 business days."
+      "transcript": [
+        {
+          "timestamp": "00:00:00",
+          "speaker": "HR",
+          "text": "Hi Harsh Shah, thanks for joining this 1:1 check-in. We want to review your current experience in Operations."
+        },
+        {
+          "timestamp": "00:00:20",
+          "speaker": "Harsh Shah",
+          "text": "Thanks. Overall things are going well, but I want clearer weekly priorities for my team role responsibilities."
+        },
+        {
+          "timestamp": "00:00:45",
+          "speaker": "HR",
+          "text": "That makes sense. Are there any blockers or support areas we should address immediately?"
+        },
+        {
+          "timestamp": "00:01:10",
+          "speaker": "Harsh Shah",
+          "text": "A structured planning sync and clearer ownership boundaries would help reduce confusion."
+        },
+        {
+          "timestamp": "00:01:35",
+          "speaker": "HR",
+          "text": "Noted. We will capture action items, align with your manager, and set a follow-up date."
+        },
+        {
+          "timestamp": "00:01:55",
+          "speaker": "Harsh Shah",
+          "text": "That sounds good. I appreciate the support and follow-up plan."
+        }
+      ]
+    },
+    {
+      "meetingId": "niharmehta245@gmail.com:latest",
+      "employeeEmail": "niharmehta245@gmail.com",
+      "meeting_brief": {
+        "previous_meeting": "HR and Engagement Review",
+        "date": "2026-03-13",
+        "meeting_objective": "Conduct a structured HR check-in and capture actions for growth and wellbeing.",
+        "attendees": [
+          {
+            "name": "HR",
+            "role": "HR"
+          },
+          {
+            "name": "Nihar Mehta",
+            "role": "Employee"
+          }
+        ],
+        "key_takeaways": [
+          "Nihar Mehta discussed current workload and team priorities for the coming sprint.",
+          "HR and Nihar Mehta aligned on growth expectations for the IT Security Engineer role.",
+          "An action plan was agreed with follow-up checkpoints for IT."
+        ]
       },
-      {
-        "owner": "Alex",
-        "task": "Share a written list of workload blockers and role expectations before the follow-up meeting."
+      "transcript": [
+        {
+          "timestamp": "00:00:00",
+          "speaker": "HR",
+          "text": "Hi Nihar Mehta, thanks for joining this 1:1 check-in. We want to review your current experience in IT."
+        },
+        {
+          "timestamp": "00:00:20",
+          "speaker": "Nihar Mehta",
+          "text": "Thanks. Overall things are going well, but I want clearer weekly priorities for my IT Security Engineer responsibilities."
+        },
+        {
+          "timestamp": "00:00:45",
+          "speaker": "HR",
+          "text": "That makes sense. Are there any blockers or support areas we should address immediately?"
+        },
+        {
+          "timestamp": "00:01:10",
+          "speaker": "Nihar Mehta",
+          "text": "A structured planning sync and clearer ownership boundaries would help reduce confusion."
+        },
+        {
+          "timestamp": "00:01:35",
+          "speaker": "HR",
+          "text": "Noted. We will capture action items, align with your manager, and set a follow-up date."
+        },
+        {
+          "timestamp": "00:01:55",
+          "speaker": "Nihar Mehta",
+          "text": "That sounds good. I appreciate the support and follow-up plan."
+        }
+      ]
+    },
+    {
+      "meetingId": "nikhilsolanki9876@gmail.com:latest",
+      "employeeEmail": "nikhilsolanki9876@gmail.com",
+      "meeting_brief": {
+        "previous_meeting": "HR and Engagement Review",
+        "date": "2026-03-13",
+        "meeting_objective": "Conduct a structured HR check-in and capture actions for growth and wellbeing.",
+        "attendees": [
+          {
+            "name": "HR",
+            "role": "HR"
+          },
+          {
+            "name": "Nikhil Solanki",
+            "role": "Employee"
+          }
+        ],
+        "key_takeaways": [
+          "Nikhil Solanki discussed current workload and team priorities for the coming sprint.",
+          "HR and Nikhil Solanki aligned on growth expectations for the current role.",
+          "An action plan was agreed with follow-up checkpoints for the team."
+        ]
       },
-      {
-        "owner": "Sarah",
-        "task": "Set up a three-way follow-up with Alex and his manager to address working relationship concerns and role scope."
-      }
-    ],
-    "decisions_made": [
-      "HR will run a structured intervention instead of an informal check-in due to high burnout risk.",
-      "A written promotion rubric and milestone plan will be provided to Alex.",
-      "A three-way alignment meeting (Alex, manager, HR) will be scheduled to resolve priority conflicts."
-    ],
-    "commitment_tracker": [
-      {
-        "owner": "Sarah Jenkins",
-        "commitment": "Send written meeting summary with owner-wise actions",
-        "dueDate": "2026-02-18",
-        "status": "completed"
+      "transcript": [
+        {
+          "timestamp": "00:00:00",
+          "speaker": "HR",
+          "text": "Hi Nikhil Solanki, thanks for joining this 1:1 check-in. We want to review your current experience in team."
+        },
+        {
+          "timestamp": "00:00:20",
+          "speaker": "Nikhil Solanki",
+          "text": "Thanks. Overall things are going well, but I want clearer weekly priorities for my team role responsibilities."
+        },
+        {
+          "timestamp": "00:00:45",
+          "speaker": "HR",
+          "text": "That makes sense. Are there any blockers or support areas we should address immediately?"
+        },
+        {
+          "timestamp": "00:01:10",
+          "speaker": "Nikhil Solanki",
+          "text": "A structured planning sync and clearer ownership boundaries would help reduce confusion."
+        },
+        {
+          "timestamp": "00:01:35",
+          "speaker": "HR",
+          "text": "Noted. We will capture action items, align with your manager, and set a follow-up date."
+        },
+        {
+          "timestamp": "00:01:55",
+          "speaker": "Nikhil Solanki",
+          "text": "That sounds good. I appreciate the support and follow-up plan."
+        }
+      ]
+    },
+    {
+      "meetingId": "drashtimaheswari20@gmail.com:latest",
+      "employeeEmail": "drashtimaheswari20@gmail.com",
+      "meeting_brief": {
+        "previous_meeting": "HR and Engagement Review",
+        "date": "2026-03-13",
+        "meeting_objective": "Conduct a structured HR check-in and capture actions for growth and wellbeing.",
+        "attendees": [
+          {
+            "name": "HR",
+            "role": "HR"
+          },
+          {
+            "name": "Drashti Maheswari",
+            "role": "Employee"
+          }
+        ],
+        "key_takeaways": [
+          "Drashti Maheswari discussed current workload and team priorities for the coming sprint.",
+          "HR and Drashti Maheswari aligned on growth expectations for the current role.",
+          "An action plan was agreed with follow-up checkpoints for the team."
+        ]
       },
-      {
-        "owner": "Sarah Jenkins",
-        "commitment": "Schedule three-way manager alignment discussion",
-        "dueDate": "2026-02-21",
-        "status": "in_progress"
+      "transcript": [
+        {
+          "timestamp": "00:00:00",
+          "speaker": "HR",
+          "text": "Hi Drashti Maheswari, thanks for joining this 1:1 check-in. We want to review your current experience in team."
+        },
+        {
+          "timestamp": "00:00:20",
+          "speaker": "Drashti Maheswari",
+          "text": "Thanks. Overall things are going well, but I want clearer weekly priorities for my team role responsibilities."
+        },
+        {
+          "timestamp": "00:00:45",
+          "speaker": "HR",
+          "text": "That makes sense. Are there any blockers or support areas we should address immediately?"
+        },
+        {
+          "timestamp": "00:01:10",
+          "speaker": "Drashti Maheswari",
+          "text": "A structured planning sync and clearer ownership boundaries would help reduce confusion."
+        },
+        {
+          "timestamp": "00:01:35",
+          "speaker": "HR",
+          "text": "Noted. We will capture action items, align with your manager, and set a follow-up date."
+        },
+        {
+          "timestamp": "00:01:55",
+          "speaker": "Drashti Maheswari",
+          "text": "That sounds good. I appreciate the support and follow-up plan."
+        }
+      ]
+    },
+    {
+      "meetingId": "parth.srivastava660@gmail.com:latest",
+      "employeeEmail": "parth.srivastava660@gmail.com",
+      "meeting_brief": {
+        "previous_meeting": "HR and Engagement Review",
+        "date": "2026-03-13",
+        "meeting_objective": "Conduct a structured HR check-in and capture actions for growth and wellbeing.",
+        "attendees": [
+          {
+            "name": "HR",
+            "role": "HR"
+          },
+          {
+            "name": "Parth Srivastava",
+            "role": "Employee"
+          }
+        ],
+        "key_takeaways": [
+          "Parth Srivastava discussed current workload and team priorities for the coming sprint.",
+          "HR and Parth Srivastava aligned on growth expectations for the HR Specialist role.",
+          "An action plan was agreed with follow-up checkpoints for the team."
+        ]
       },
-      {
-        "owner": "Sarah Jenkins",
-        "commitment": "Share promotion criteria and timeline document",
-        "dueDate": "2026-02-28",
-        "status": "open"
-      },
-      {
-        "owner": "Alex Chen",
-        "commitment": "Share blocker list and examples of conflicting priorities",
-        "dueDate": "2026-02-20",
-        "status": "completed"
-      }
-    ],
-    "unresolved_items": [
-      "Promotion timeline is still not finalized.",
-      "Workload distribution and on-call ownership are not yet rebalanced.",
-      "Manager-employee communication norms are not formally agreed."
-    ],
-    "next_steps": "Hold a follow-up check-in in two weeks to review workload reduction, promotion clarity, and manager alignment."
-  },
-  "transcript": [
-    {
-      "timestamp": "00:00:05",
-      "speaker": "Sarah Jenkins",
-      "text": "Hi Alex, thanks for joining. Today is your quarterly wellbeing and growth check-in. How are you doing overall?"
-    },
-    {
-      "timestamp": "00:00:22",
-      "speaker": "Alex Chen",
-      "text": "Honestly, not great. I have been running on low energy for a while and it feels like every sprint has been fire-fighting mode."
-    },
-    {
-      "timestamp": "00:00:48",
-      "speaker": "Sarah Jenkins",
-      "text": "Thanks for being direct. Can you walk me through what has felt the most difficult over the last month?"
-    },
-    {
-      "timestamp": "00:01:10",
-      "speaker": "Alex Chen",
-      "text": "For at least five to six weeks, the workload has been too high. I am in late-night incident calls, then expected to deliver feature work the next morning. It has started affecting my work life balance."
-    },
-    {
-      "timestamp": "00:01:38",
-      "speaker": "Sarah Jenkins",
-      "text": "That sounds unsustainable. Have you raised this with your manager, and did anything change?"
-    },
-    {
-      "timestamp": "00:01:57",
-      "speaker": "Alex Chen",
-      "text": "I did, multiple times. We had conversations, but there is still manager conflict around priorities. I am asked to own everything, yet I do not get support when timelines slip."
-    },
-    {
-      "timestamp": "00:02:25",
-      "speaker": "Sarah Jenkins",
-      "text": "Understood. I want to ask about growth too. Last cycle you were aiming for Senior Engineer. How are you feeling about that now?"
-    },
-    {
-      "timestamp": "00:02:47",
-      "speaker": "Alex Chen",
-      "text": "I feel discouraged. I believe I was passed over for promotion without explanation. The feedback was vague, and I still do not know what concrete criteria I missed."
-    },
-    {
-      "timestamp": "00:03:18",
-      "speaker": "Sarah Jenkins",
-      "text": "That is important feedback. Did you receive any written rubric or measurable expectations from leadership?"
-    },
-    {
-      "timestamp": "00:03:35",
-      "speaker": "Alex Chen",
-      "text": "No, and that is a big part of the frustration. I have led incidents, mentored juniors, and delivered migration work, but I still feel undervalued compared with peers who had clearer sponsorship."
-    },
-    {
-      "timestamp": "00:04:06",
-      "speaker": "Sarah Jenkins",
-      "text": "I hear you. Let us talk through day-to-day impact. Have these issues changed your engagement or communication patterns?"
-    },
-    {
-      "timestamp": "00:04:24",
-      "speaker": "Alex Chen",
-      "text": "Yes. I have become less active in Slack and avoid optional channels because I am trying to keep my head above water. I am mostly responding only when tagged."
-    },
-    {
-      "timestamp": "00:04:56",
-      "speaker": "Sarah Jenkins",
-      "text": "That aligns with what I noticed in communication trends. Are you considering any major changes if this does not improve?"
-    },
-    {
-      "timestamp": "00:05:19",
-      "speaker": "Alex Chen",
-      "text": "I am not making a decision today, but I cannot continue like this for another quarter. If there is no clarity and support soon, I will have to reassess my options."
-    },
-    {
-      "timestamp": "00:05:47",
-      "speaker": "Sarah Jenkins",
-      "text": "Thank you for being transparent. When you say clarity, what are the top three things you need immediately?"
-    },
-    {
-      "timestamp": "00:06:05",
-      "speaker": "Alex Chen",
-      "text": "First, written promotion criteria. Second, a realistic workload split so I am not on incident and feature deadlines every week. Third, better manager alignment on priorities."
-    },
-    {
-      "timestamp": "00:06:39",
-      "speaker": "Sarah Jenkins",
-      "text": "That is specific and helpful. On the manager alignment point, can you share one recent example where expectations were unclear?"
-    },
-    {
-      "timestamp": "00:07:03",
-      "speaker": "Alex Chen",
-      "text": "Last sprint I was asked to lead release stabilization and also deliver two major backlog items. When I escalated risk, I was told to just make it work, then later asked why delivery slipped."
-    },
-    {
-      "timestamp": "00:07:38",
-      "speaker": "Sarah Jenkins",
-      "text": "That sounds like conflicting direction. Did you document the escalation at the time?"
-    },
-    {
-      "timestamp": "00:07:52",
-      "speaker": "Alex Chen",
-      "text": "Yes, in sprint comments and in Slack. But follow-through has been inconsistent, which is why I feel my concerns are not landing."
-    },
-    {
-      "timestamp": "00:08:20",
-      "speaker": "Sarah Jenkins",
-      "text": "Understood. Let us also check wellbeing. How has this affected your health and recovery outside work?"
-    },
-    {
-      "timestamp": "00:08:39",
-      "speaker": "Alex Chen",
-      "text": "Sleep has been irregular during release weeks, and I have used sick days mainly from stress and fatigue. I am trying to recover, but it keeps repeating."
-    },
-    {
-      "timestamp": "00:09:10",
-      "speaker": "Sarah Jenkins",
-      "text": "I appreciate your honesty. I want to make sure we address this quickly. Are you open to a structured recovery and workload plan starting this sprint?"
-    },
-    {
-      "timestamp": "00:09:31",
-      "speaker": "Alex Chen",
-      "text": "Yes, I am open to it. I just need confidence that it is not temporary and that expectations will be realistic going forward."
-    },
-    {
-      "timestamp": "00:10:02",
-      "speaker": "Sarah Jenkins",
-      "text": "That is fair. I can set up a three-way meeting with your manager and include the engineering director if needed. Would that help?"
-    },
-    {
-      "timestamp": "00:10:20",
-      "speaker": "Alex Chen",
-      "text": "Yes, that would help. I would like commitments in writing so there is a clear timeline and accountability."
-    },
-    {
-      "timestamp": "00:10:52",
-      "speaker": "Sarah Jenkins",
-      "text": "Agreed. On career path, do you still want to pursue Senior Engineer here if we can restore clarity and support?"
-    },
-    {
-      "timestamp": "00:11:12",
-      "speaker": "Alex Chen",
-      "text": "I do, but right now my career path feels unclear. I need a concrete plan with milestones, not broad feedback."
-    },
-    {
-      "timestamp": "00:11:45",
-      "speaker": "Sarah Jenkins",
-      "text": "I can commit to that process. We will define milestones for technical scope, cross-team influence, and mentorship outcomes."
-    },
-    {
-      "timestamp": "00:12:11",
-      "speaker": "Alex Chen",
-      "text": "That would make a big difference. I want to keep contributing here, but I need to see concrete progress soon."
-    },
-    {
-      "timestamp": "00:12:43",
-      "speaker": "Sarah Jenkins",
-      "text": "Let me summarize what I heard: sustained high workload, manager conflict around priorities, promotion clarity gap, and wellbeing impact. Did I capture that correctly?"
-    },
-    {
-      "timestamp": "00:13:05",
-      "speaker": "Alex Chen",
-      "text": "Yes, that is accurate."
-    },
-    {
-      "timestamp": "00:13:29",
-      "speaker": "Sarah Jenkins",
-      "text": "Action plan: I will send written notes today, schedule the three-way discussion this week, and provide a promotion criteria document by next Friday."
-    },
-    {
-      "timestamp": "00:13:56",
-      "speaker": "Alex Chen",
-      "text": "Thank you. Having timelines helps. I will also share my blocker list and examples so the conversation stays objective."
-    },
-    {
-      "timestamp": "00:14:24",
-      "speaker": "Sarah Jenkins",
-      "text": "Great. We will do a follow-up in two weeks to review whether the workload and communication changes are actually working."
-    },
-    {
-      "timestamp": "00:14:52",
-      "speaker": "Alex Chen",
-      "text": "Sounds good. I appreciate the support and I hope we can reset this in a sustainable way."
+      "transcript": [
+        {
+          "timestamp": "00:00:00",
+          "speaker": "HR",
+          "text": "Hi Parth Srivastava, thanks for joining this 1:1 check-in. We want to review your current experience in team."
+        },
+        {
+          "timestamp": "00:00:20",
+          "speaker": "Parth Srivastava",
+          "text": "Thanks. Overall things are going well, but I want clearer weekly priorities for my HR Specialist responsibilities."
+        },
+        {
+          "timestamp": "00:00:45",
+          "speaker": "HR",
+          "text": "That makes sense. Are there any blockers or support areas we should address immediately?"
+        },
+        {
+          "timestamp": "00:01:10",
+          "speaker": "Parth Srivastava",
+          "text": "A structured planning sync and clearer ownership boundaries would help reduce confusion."
+        },
+        {
+          "timestamp": "00:01:35",
+          "speaker": "HR",
+          "text": "Noted. We will capture action items, align with your manager, and set a follow-up date."
+        },
+        {
+          "timestamp": "00:01:55",
+          "speaker": "Parth Srivastava",
+          "text": "That sounds good. I appreciate the support and follow-up plan."
+        }
+      ]
     }
   ]
 }

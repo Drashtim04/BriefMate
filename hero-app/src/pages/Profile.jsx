@@ -1,19 +1,39 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { User, Mail, Briefcase, Key, Pencil, Check, X, LogOut } from "lucide-react";
 import { Link } from "react-router-dom";
 
-const DEFAULT_USER = {
-  name: "Alex Rivera",
-  email: "alex.rivera@company.com",
-  role: "Chief HR Officer",
-  department: "Human Resources",
-  avatar: "AR",
+const EMPTY_USER = {
+  name: "",
+  email: "",
+  role: "",
+  department: "",
+  avatar: "",
 };
 
 export function Profile() {
-  const [user, setUser] = useState(DEFAULT_USER);
+  const [user, setUser] = useState(EMPTY_USER);
   const [isEditing, setIsEditing] = useState(false);
-  const [draft, setDraft] = useState({ ...DEFAULT_USER });
+  const [draft, setDraft] = useState({ ...EMPTY_USER });
+
+  useEffect(() => {
+    try {
+      const name = window.localStorage.getItem("userName") || "";
+      const email = window.localStorage.getItem("userEmail") || "";
+      const role = window.localStorage.getItem("userRole") || "";
+      const department = window.localStorage.getItem("userDepartment") || "";
+      const avatar = name
+        .split(" ")
+        .map((n) => n[0] || "")
+        .join("")
+        .toUpperCase();
+      const nextUser = { name, email, role, department, avatar };
+      setUser(nextUser);
+      setDraft(nextUser);
+    } catch (_err) {
+      setUser(EMPTY_USER);
+      setDraft(EMPTY_USER);
+    }
+  }, []);
 
   const handleEdit = () => {
     setDraft({ ...user });
@@ -26,7 +46,16 @@ export function Profile() {
       .map((n) => n[0])
       .join("")
       .toUpperCase();
-    setUser({ ...draft, avatar: initials });
+    const nextUser = { ...draft, avatar: initials };
+    setUser(nextUser);
+    try {
+      window.localStorage.setItem("userName", nextUser.name || "");
+      window.localStorage.setItem("userEmail", nextUser.email || "");
+      window.localStorage.setItem("userRole", nextUser.role || "");
+      window.localStorage.setItem("userDepartment", nextUser.department || "");
+    } catch (_err) {
+      // Ignore storage failures and keep in-memory profile state.
+    }
     setIsEditing(false);
   };
 

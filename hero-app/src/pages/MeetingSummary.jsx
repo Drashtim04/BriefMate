@@ -1,90 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Calendar as CalendarIcon, Clock, Users, ArrowRight, Lightbulb, CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
-
-// ---------- Mock data ----------
-const MEETINGS = [
-  {
-    id: 1,
-    empName: "Elena Rodriguez",
-    dept: "Design",
-    date: "2025-10-14",
-    displayDate: "Oct 14, 2025",
-    time: "10:00 AM",
-    type: "1:1 Check-in",
-    transcript: [
-      { speaker: "HR",    text: "So how has the new sprint cycle been treating you?" },
-      { speaker: "Elena", text: "It's been okay, we're definitely moving faster. The only real issue is the Jira workflow — it's creating a bottleneck during code reviews." },
-      { speaker: "HR",    text: "Could we solve that by removing a required approval step?" },
-      { speaker: "Elena", text: "Yes! If the QA column were automated, we'd save about 4 hours a week." },
-      { speaker: "HR",    text: "Noted. Any thoughts on the upcoming mobile apps work?" },
-      { speaker: "Elena", text: "I'm really excited — I'd love to help lead that React Native migration." },
-    ],
-    aiSummary: {
-      topics: "Q3 deliverables, team expansion plans, UI prototyping tools, mobile roadmap.",
-      concerns: "Jira workflow bottlenecks slowing code reviews.",
-      career: "Interest in leading the React Native migration taskforce.",
-    },
-    suggestions: [
-      "How are you feeling about the React Native migration timeline?",
-      "Have the Jira bottlenecks improved since our last check-in?",
-    ],
-  },
-  {
-    id: 2,
-    empName: "Michael Chen",
-    dept: "Sales",
-    date: "2025-10-12",
-    displayDate: "Oct 12, 2025",
-    time: "02:30 PM",
-    type: "Performance Review",
-    transcript: [
-      { speaker: "HR",     text: "Michael, your Q3 numbers look strong. How are you feeling about the team dynamic?" },
-      { speaker: "Michael",text: "Overall good, but I'm noticing some friction between the SDR and AE layers." },
-      { speaker: "HR",     text: "Interesting. What do you think is driving that?" },
-      { speaker: "Michael",text: "Mostly unclear handoff criteria. If we document the qualification thresholds, it would help a lot." },
-    ],
-    aiSummary: {
-      topics: "Q3 performance review, SDR-AE handoff friction, quota targets.",
-      concerns: "Friction between SDRs and AEs due to unclear handoff criteria.",
-      career: "Interested in a sales enablement role to help systemise the process.",
-    },
-    suggestions: [
-      "Have you drafted the updated handoff criteria document?",
-      "Would you be interested in leading the next sales enablement session?",
-    ],
-  },
-  {
-    id: 3,
-    empName: "Sarah Jenkins",
-    dept: "Engineering",
-    date: "2025-10-10",
-    displayDate: "Oct 10, 2025",
-    time: "11:15 AM",
-    type: "Career Growth",
-    transcript: [
-      { speaker: "HR",   text: "Sarah, we wanted to check in on your career aspirations as we head into Q4." },
-      { speaker: "Sarah",text: "I've been thinking a lot about moving into an engineering management track." },
-      { speaker: "HR",   text: "That's great. Have you had a chance to mentor any junior engineers?" },
-      { speaker: "Sarah",text: "Yes — I've been doing informal code reviews and design sessions. I'd love to formalise that." },
-    ],
-    aiSummary: {
-      topics: "Career trajectory, engineering management interest, current team dynamics.",
-      concerns: "Feels underutilised in a purely IC role; wants more leadership visibility.",
-      career: "Targeting an EM position within 6–12 months.",
-    },
-    suggestions: [
-      "Would it help to put together a formal mentorship plan by end of month?",
-      "Are there upcoming projects where you could take a tech-lead role?",
-    ],
-  },
-];
+import { getMeetingTranscript, listMeetings } from "../lib/api";
 
 // ---------- Mini Calendar ----------
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAY_NAMES   = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
 function MiniCalendar({ meetings, onSelectMeeting }) {
-  const today = new Date(2025, 9, 14); // Oct 14 2025 (mock "today")
+  const today = new Date();
   const [viewDate, setViewDate] = useState(today);
 
   const year  = viewDate.getFullYear();
@@ -137,7 +60,10 @@ function MiniCalendar({ meetings, onSelectMeeting }) {
         {cells.map((day, idx) => {
           if (!day) return <div key={`e${idx}`} />;
           const hasEvent = !!meetingMap[day];
-          const isToday = day === 14 && month === 9 && year === 2025;
+          const isToday =
+            day === today.getDate() &&
+            month === today.getMonth() &&
+            year === today.getFullYear();
           return (
             <button
               key={day}
@@ -180,7 +106,128 @@ function MiniCalendar({ meetings, onSelectMeeting }) {
 
 // ---------- Main Page ----------
 export function MeetingSummary() {
-  const [selectedMeeting, setSelectedMeeting] = useState(MEETINGS[0]);
+  const [meetings, setMeetings] = useState([]);
+  const [selectedMeeting, setSelectedMeeting] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let isMounted = true;
+
+    function formatNameFromEmail(emailText) {
+      const local = String(emailText || "").split("@")[0];
+      if (!local) return "";
+      return local
+        .split(/[._-]/g)
+        .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : ""))
+        .join(" ");
+    }
+
+    function toDisplayDate(dateText) {
+      const d = new Date(dateText);
+      if (Number.isNaN(d.getTime())) return "";
+      return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    }
+
+    function toDisplayTime(dateText) {
+      const d = new Date(dateText);
+      if (Number.isNaN(d.getTime())) return "";
+      return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    }
+
+    async function loadMeetings() {
+      try {
+        setIsLoading(true);
+        setError("");
+        const rows = await listMeetings({ limit: 30 });
+        if (!isMounted) return;
+
+        const mapped = rows
+          .map((row) => {
+            const at = row.meetingAt || "";
+            const participantEmail = row.employeeEmail || row.participants?.[0] || "";
+
+            return {
+              id: row.meetingId,
+              employeeEmail: participantEmail,
+              empName: formatNameFromEmail(participantEmail),
+              dept: "",
+              date: at ? String(at).slice(0, 10) : "",
+              displayDate: toDisplayDate(at),
+              time: toDisplayTime(at),
+              type: row.title || "",
+              transcript: [],
+              aiSummary: {
+                topics: row.summary || "",
+                concerns: "",
+                career: "",
+              },
+              suggestions: [],
+            };
+          })
+          .filter((row) => row.id);
+
+        const seen = new Set();
+        const deduped = mapped.filter((row) => {
+          const key = `${String(row.employeeEmail || "").toLowerCase()}|${row.date}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+        setMeetings(deduped);
+        setSelectedMeeting(deduped[0] || null);
+      } catch (err) {
+        if (!isMounted) return;
+        setMeetings([]);
+        setSelectedMeeting(null);
+        setError(err?.message || "Unable to load live meetings");
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+
+    loadMeetings();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function hydrateTranscript() {
+      if (!selectedMeeting?.id) return;
+      try {
+        const details = await getMeetingTranscript(selectedMeeting.id);
+        if (!isMounted) return;
+
+        const transcriptLines = Array.isArray(details?.transcript)
+          ? details.transcript.map((line) => ({
+              speaker: line?.speaker || line?.role || "Participant",
+              text: line?.text || line?.message || "",
+            }))
+          : [];
+
+        setSelectedMeeting((prev) => ({
+          ...prev,
+          transcript: transcriptLines.length ? transcriptLines : prev.transcript,
+          aiSummary: {
+            topics: details?.summary || prev.aiSummary.topics,
+            concerns: prev.aiSummary.concerns,
+            career: prev.aiSummary.career,
+          },
+        }));
+      } catch (_err) {
+        // Keep current UI state when transcript endpoint is unavailable.
+      }
+    }
+
+    hydrateTranscript();
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedMeeting?.id]);
 
   return (
     <div className="space-y-6">
@@ -191,6 +238,14 @@ export function MeetingSummary() {
         </p>
       </div>
 
+      {error && (
+        <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 px-4 py-2 rounded-lg">
+          Live meeting service unavailable: {error}.
+        </div>
+      )}
+
+      {isLoading && <div className="text-sm text-gray-500">Loading meetings...</div>}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" style={{ minHeight: "600px" }}>
         {/* LEFT — Calendar + meeting list */}
         <div className="col-span-1 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
@@ -198,17 +253,17 @@ export function MeetingSummary() {
             <CalendarIcon className="w-4 h-4 mr-2 text-[#1f7a6c]" /> Calendar
           </div>
           <div className="p-4">
-            <MiniCalendar meetings={MEETINGS} onSelectMeeting={setSelectedMeeting} />
+            <MiniCalendar meetings={meetings} onSelectMeeting={setSelectedMeeting} />
           </div>
 
           {/* Scrollable meeting cards below the calendar */}
           <div className="border-t border-gray-100 overflow-y-auto flex-1 p-2 space-y-1.5">
-            {MEETINGS.map((m) => (
+            {meetings.map((m) => (
               <button
                 key={m.id}
                 onClick={() => setSelectedMeeting(m)}
                 className={`w-full text-left p-3 rounded-lg border transition-all ${
-                  selectedMeeting.id === m.id
+                  selectedMeeting?.id === m.id
                     ? "border-[#1f7a6c] bg-[#1f7a6c]/5"
                     : "border-transparent hover:border-gray-200 hover:bg-gray-50"
                 }`}
@@ -222,11 +277,20 @@ export function MeetingSummary() {
                 </div>
               </button>
             ))}
+            {meetings.length === 0 && (
+              <div className="px-3 py-6 text-center text-sm text-gray-500">No meetings available.</div>
+            )}
           </div>
         </div>
 
         {/* RIGHT — Details panel */}
         <div className="col-span-1 lg:col-span-2 bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
+          {!selectedMeeting ? (
+            <div className="h-full flex items-center justify-center text-sm text-gray-500 p-6">
+              Select a meeting to view transcript and insights.
+            </div>
+          ) : (
+            <>
           {/* Meeting header */}
           <div className="p-6 border-b border-gray-200 bg-gray-50">
             <h2 className="text-lg font-bold text-[#1f2937]">
@@ -273,6 +337,9 @@ export function MeetingSummary() {
                     &ldquo;{q}&rdquo;
                   </div>
                 ))}
+                {selectedMeeting.suggestions.length === 0 && (
+                  <div className="text-sm text-gray-500">No follow-up suggestions available.</div>
+                )}
               </div>
             </section>
 
@@ -288,10 +355,16 @@ export function MeetingSummary() {
                     {line.text}
                   </p>
                 ))}
-                <p className="italic text-center text-gray-400 mt-4">— End of transcript —</p>
+                {selectedMeeting.transcript.length === 0 ? (
+                  <p className="italic text-center text-gray-400 mt-4">No transcript available.</p>
+                ) : (
+                  <p className="italic text-center text-gray-400 mt-4">End of transcript</p>
+                )}
               </div>
             </section>
           </div>
+            </>
+          )}
         </div>
       </div>
     </div>

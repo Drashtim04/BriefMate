@@ -1,25 +1,13 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Users, Calendar, AlertTriangle, Activity } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import { MetricCard } from "../components/MetricCard";
 import { SentimentChart } from "../components/SentimentChart";
 import { DepartmentPieChart } from "../components/DepartmentPieChart";
-
-const RECENT_INSIGHTS = [
-  { id: "1", name: "Sarah Jenkins",   dept: "Engineering", role: "Frontend Dev",     lastMeeting: "2 days ago",  sentiment: "Positive", risk: "Low"    },
-  { id: "2", name: "Michael Chen",    dept: "Sales",       role: "Account Exec",     lastMeeting: "1 week ago",  sentiment: "Neutral",  risk: "Medium" },
-  { id: "3", name: "Elena Rodriguez", dept: "Design",      role: "Product Designer", lastMeeting: "3 days ago",  sentiment: "Negative", risk: "High"   },
-  { id: "4", name: "David Kim",       dept: "HR",          role: "Recruiter",        lastMeeting: "Today",       sentiment: "Positive", risk: "Low"    },
-];
+import { getDashboardSummary, listEmployees } from "../lib/api";
 
 // ---------- Employee Detail Modal ----------
 function EmployeeModal({ person, onClose }) {
   if (!person) return null;
-
-  const sentimentHistory = [
-    { month: "Jul", score: 78 }, { month: "Aug", score: 74 },
-    { month: "Sep", score: 65 }, { month: "Oct", score: person.sentiment === "Positive" ? 82 : person.sentiment === "Neutral" ? 67 : 55 },
-  ];
 
   return (
     <div
@@ -57,55 +45,33 @@ function EmployeeModal({ person, onClose }) {
               : person.sentiment === "Negative" ? "bg-red-100 text-red-800"
               : "bg-gray-100 text-gray-800"
             }`}>
-              Sentiment: {person.sentiment}
+              Sentiment: {person.sentiment || ""}
             </span>
             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
               person.risk === "High" ? "bg-amber-100 text-orange-800"
               : person.risk === "Medium" ? "bg-yellow-100 text-yellow-800"
               : "bg-green-100 text-green-800"
             }`}>
-              Risk: {person.risk}
+              Risk: {person.risk || ""}
             </span>
           </div>
 
-          {/* Sentiment History */}
+          {/* Employee details */}
           <div>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Sentiment History</h3>
-            <div className="flex items-end gap-2 h-20">
-              {sentimentHistory.map((sh) => (
-                <div key={sh.month} className="flex flex-col items-center flex-1">
-                  <div
-                    className="w-full rounded-t-md bg-[#1f7a6c]"
-                    style={{ height: `${sh.score}%`, opacity: 0.4 + sh.score / 200 }}
-                  />
-                  <span className="text-xs text-gray-500 mt-1">{sh.month}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Meeting History */}
-          <div>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Meeting History</h3>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Employee Details</h3>
             <div className="space-y-2 text-sm text-gray-600">
               <div className="flex justify-between py-1 border-b border-gray-100">
-                <span>1:1 Check-in</span><span className="text-gray-400">Oct 14, 2025</span>
+                <span>Department</span><span className="text-gray-400">{person.dept || ""}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-gray-100">
-                <span>Performance Review</span><span className="text-gray-400">Sep 30, 2025</span>
+                <span>Role</span><span className="text-gray-400">{person.role || ""}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-gray-100">
+                <span>Last Meeting</span><span className="text-gray-400">{person.lastMeeting || ""}</span>
               </div>
               <div className="flex justify-between py-1">
-                <span>Career Growth Discussion</span><span className="text-gray-400">Aug 19, 2025</span>
+                <span>Email</span><span className="text-gray-400">{person.email || ""}</span>
               </div>
-            </div>
-          </div>
-
-          {/* Recent Notes */}
-          <div>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Recent Notes</h3>
-            <div className="border-l-2 border-[#1f7a6c]/40 pl-4 space-y-3">
-              <p className="text-sm text-gray-700">Expressed interest in leading a cross-functional project next quarter.</p>
-              <p className="text-sm text-gray-400 text-xs">Oct 14 · 1:1 meeting</p>
             </div>
           </div>
         </div>
@@ -126,7 +92,86 @@ function EmployeeModal({ person, onClose }) {
 // ---------- Main Dashboard ----------
 export function Dashboard() {
   const [modalEmployee, setModalEmployee] = useState(null);
-  const navigate = useNavigate();
+  const [insights, setInsights] = useState([]);
+  const [allEmployees, setAllEmployees] = useState([]);
+  const [summary, setSummary] = useState({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadDashboard() {
+      try {
+        setIsLoading(true);
+        setError("");
+        const [summaryData, employeeData] = await Promise.all([getDashboardSummary(), listEmployees()]);
+        if (!isMounted) return;
+
+        setAllEmployees(employeeData);
+        setInsights(employeeData.slice(0, 6));
+        setSummary(summaryData || {});
+      } catch (err) {
+        if (!isMounted) return;
+        setInsights([]);
+        setAllEmployees([]);
+        setSummary({});
+        setError(err?.message || "Unable to load dashboard summary");
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+
+    loadDashboard();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const metrics = useMemo(() => {
+    const summaryEmployees = Array.isArray(summary?.employees) ? summary.employees : [];
+    const totalEmployees = Number(summary?.totalEmployees || summary?.employeeCount || summaryEmployees.length || allEmployees.length || 0);
+    const meetingsThisWeek = Number(summary?.meetingsThisWeek || summary?.weeklyMeetingCount || (Array.isArray(summary?.todayMeetings) ? summary.todayMeetings.length : 0));
+    const highRisk = Number(summary?.riskCounts?.high || 0);
+    const criticalRisk = Number(summary?.riskCounts?.critical || 0);
+    const atRisk = Number(summary?.atRiskEmployees || summary?.highRiskCount || highRisk + criticalRisk);
+
+    const healthScores = summaryEmployees
+      .map((row) => Number(row?.healthScore))
+      .filter((score) => Number.isFinite(score));
+    const sentiment = healthScores.length
+      ? Math.round(healthScores.reduce((total, score) => total + score, 0) / healthScores.length)
+      : 0;
+
+    return {
+      totalEmployees,
+      meetingsThisWeek,
+      atRisk,
+      sentiment,
+    };
+  }, [allEmployees.length, summary]);
+
+  const sentimentData = useMemo(() => {
+    const counts = {};
+    allEmployees.forEach((employee) => {
+      const key = String(employee?.sentiment || "").trim();
+      if (!key) return;
+      counts[key] = (counts[key] || 0) + 1;
+    });
+
+    return Object.entries(counts).map(([name, value]) => ({ name, value }));
+  }, [allEmployees]);
+
+  const departmentData = useMemo(() => {
+    const counts = {};
+    allEmployees.forEach((employee) => {
+      const key = String(employee?.dept || "").trim();
+      if (!key) return;
+      counts[key] = (counts[key] || 0) + 1;
+    });
+
+    return Object.entries(counts).map(([name, value]) => ({ name, value }));
+  }, [allEmployees]);
 
   return (
     <>
@@ -136,22 +181,30 @@ export function Dashboard() {
 
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-[#1f2937]">Welcome back, Alex</h1>
-          <p className="text-gray-500 mt-1">Here is what's happening with your workforce today.</p>
+          <h1 className="text-2xl font-bold text-[#1f2937]">Workforce Overview</h1>
+          <p className="text-gray-500 mt-1">Latest metrics and employee intelligence from integrated systems.</p>
         </div>
+
+        {error && (
+          <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 px-4 py-2 rounded-lg">
+            Live dashboard unavailable: {error}.
+          </div>
+        )}
 
         {/* SECTION 1 – Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <MetricCard title="Total Employees" value="1,248" description="+12 from last month"       icon={Users}         trend="up"   />
-          <MetricCard title="Meetings This Week" value="342" description="-18% vs last week"        icon={Calendar}      trend="down" />
-          <MetricCard title="Employees At Risk" value="45"  description="Requires immediate attention" icon={AlertTriangle} trend="down" />
-          <MetricCard title="Sentiment Score" value="78/100" description="+2 pts from last quarter" icon={Activity}      trend="up"   />
+          <MetricCard title="Total Employees" value={String(metrics.totalEmployees)} description="Live employee registry" icon={Users} trend="up" />
+          <MetricCard title="Meetings This Week" value={String(metrics.meetingsThisWeek)} description="From integrated meeting data" icon={Calendar} trend="up" />
+          <MetricCard title="Employees At Risk" value={String(metrics.atRisk)} description="Requires immediate attention" icon={AlertTriangle} trend="down" />
+          <MetricCard title="Sentiment Score" value={`${metrics.sentiment}/100`} description="Computed from latest profile analyses" icon={Activity} trend="up" />
         </div>
+
+        {isLoading && <div className="text-sm text-gray-500">Loading dashboard data...</div>}
 
         {/* SECTION 2 & 3 – Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <SentimentChart />
-          <DepartmentPieChart />
+          <SentimentChart data={sentimentData} />
+          <DepartmentPieChart data={departmentData} />
         </div>
 
         {/* SECTION 4 – Recent Employee Insights (clickable rows) */}
@@ -172,7 +225,7 @@ export function Dashboard() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {RECENT_INSIGHTS.map((person) => (
+                {insights.map((person) => (
                   <tr
                     key={person.id}
                     className="hover:bg-[#1f7a6c]/5 cursor-pointer transition-colors duration-150"
@@ -197,7 +250,7 @@ export function Dashboard() {
                         : person.sentiment === "Negative" ? "bg-red-100 text-red-800"
                         : "bg-gray-100 text-gray-800"
                       }`}>
-                        {person.sentiment}
+                        {person.sentiment || ""}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -206,11 +259,18 @@ export function Dashboard() {
                         : person.risk === "Medium" ? "bg-yellow-100 text-yellow-800"
                         : "bg-green-100 text-green-800"
                       }`}>
-                        {person.risk}
+                        {person.risk || ""}
                       </span>
                     </td>
                   </tr>
                 ))}
+                {insights.length === 0 && (
+                  <tr>
+                    <td colSpan="5" className="px-6 py-8 text-center text-sm text-gray-500">
+                      No employee insights available.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

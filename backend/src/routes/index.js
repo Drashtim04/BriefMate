@@ -6,6 +6,7 @@ const googleCalendarRoutes = require('./googleCalendar.routes');
 const dbRoutes = require('./db.routes');
 const ingestRoutes = require('./ingest.routes');
 const memoryRoutes = require('./memory.routes');
+const intelligenceRoutes = require('./intelligence.routes');
 
 const router = express.Router();
 
@@ -16,5 +17,6 @@ router.use('/calendar/google', googleCalendarRoutes);
 router.use('/db', dbRoutes);
 router.use('/ingest', ingestRoutes);
 router.use('/memory', memoryRoutes);
+router.use('/intelligence', intelligenceRoutes);
 
 module.exports = router;

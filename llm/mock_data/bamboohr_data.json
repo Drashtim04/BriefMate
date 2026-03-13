@@ -1,88 +1,76 @@
 {
-  "employee": {
-    "id": "10425",
-    "firstName": "Alex",
-    "lastName": "Chen",
-    "displayName": "Alex Chen",
-    "workEmail": "alex.chen@company.com",
-    "mobilePhone": "+1-555-019-8372",
-    "location": "San Francisco (HQ)"
-  },
-  "job": {
-    "title": "Software Engineer",
-    "department": "Engineering",
-    "employmentStatus": "Full-Time",
-    "hireDate": "2023-01-15",
-    "reportsTo": {
-      "id": "10102",
-      "name": "Michael Rodriguez",
-      "title": "Engineering Manager"
-    }
-  },
-  "compensation": {
-    "currency": "USD",
-    "payRate": "145000",
-    "payType": "Salary",
-    "payFrequency": "Bi-Weekly",
-    "lastIncreaseDate": "2024-01-01"
-  },
-  "timeOff": {
-    "ptoBalanceDays": 2.5,
-    "sickBalanceDays": 0.0,
-    "upcomingTimeOff": [
-      {
-        "startDate": "2026-03-20",
-        "endDate": "2026-03-24",
-        "status": "Approved",
-        "type": "Stress Recovery Leave"
-      }
-    ]
-  },
-  "performance": {
-    "lastReview": {
-      "date": "2025-12-15",
-      "reviewer": "Michael Rodriguez",
-      "rating": "Meets Expectations",
-      "notes": "Strong technical execution, but promotion readiness decision was deferred due to role-scope ambiguity. Employee requested clearer criteria and raised concern about inconsistent manager expectations and sustained workload pressure."
+  "sourceSystem": "BambooHR API",
+  "fetchedAt": "2026-03-13T19:21:25.581Z",
+  "employees": [
+    {
+      "id": "124",
+      "firstName": "Drashti",
+      "lastName": "Maheswari",
+      "displayName": "Drashti Maheswari",
+      "workEmail": "drashtimaheswari20@gmail.com",
+      "role": "",
+      "department": "",
+      "location": "",
+      "hireDate": "2004-03-01",
+      "supervisor": "",
+      "supervisorId": null,
+      "source": "bamboohr"
     },
-    "activeGoals": [
-      {
-        "id": "g-302",
-        "title": "Lead Backend Migration for Project Phoenix",
-        "status": "Completed",
-        "dueDate": "2025-10-01",
-        "progressInPercent": 100
-      },
-      {
-        "id": "g-305",
-        "title": "Mentor New Junior Developer and reduce on-call single-point dependency",
-        "status": "At Risk",
-        "dueDate": "2026-03-31",
-        "progressInPercent": 20
-      },
-      {
-        "id": "g-310",
-        "title": "Present Architecture Review to Wider Engineering Team with documented impact",
-        "status": "Delayed",
-        "dueDate": "2026-02-28",
-        "progressInPercent": 30
-      },
-      {
-        "id": "g-322",
-        "title": "Define Senior Engineer progression milestones with manager",
-        "status": "Blocked",
-        "dueDate": "2026-03-15",
-        "progressInPercent": 10
-      }
-    ]
-  },
-  "metadata": {
-    "fetchedAt": "2026-03-13T12:00:00.000Z",
-    "sourceSystem": "BambooHR API",
-    "requestedBy": {
-      "id": "10045",
-      "name": "Sarah Jenkins",
-      "role": "HR Business Partner"
+    {
+      "id": "121",
+      "firstName": "Nihar",
+      "lastName": "Mehta",
+      "displayName": "Nihar Mehta",
+      "workEmail": "niharmehta245@gmail.com",
+      "role": "IT Security Engineer",
+      "department": "IT",
+      "location": "Dublin, Ireland",
+      "hireDate": "2026-01-01",
+      "supervisor": "Eckerly, Aaron",
+      "supervisorId": "32",
+      "source": "bamboohr"
+    },
+    {
+      "id": "8",
+      "firstName": "Harsh",
+      "lastName": "Shah",
+      "displayName": "Harsh Shah",
+      "workEmail": "harshdshah333@gmail.com",
+      "role": "",
+      "department": "Operations",
+      "location": "Dublin, Ireland",
+      "hireDate": "2022-09-02",
+      "supervisor": "",
+      "supervisorId": null,
+      "source": "bamboohr"
+    },
+    {
+      "id": "122",
+      "firstName": "Nikhil",
+      "lastName": "Solanki",
+      "displayName": "Nikhil Solanki",
+      "workEmail": "nikhilsolanki9876@gmail.com",
+      "role": "",
+      "department": "",
+      "location": "",
+      "hireDate": "2026-03-01",
+      "supervisor": "",
+      "supervisorId": null,
+      "source": "bamboohr"
+    },
+    {
+      "id": "118",
+      "firstName": "Parth",
+      "lastName": "Srivastava",
+      "displayName": "Parth Srivastava",
+      "workEmail": "parth.srivastava660@gmail.com",
+      "role": "HR Specialist",
+      "department": "",
+      "location": "",
+      "hireDate": "2026-03-13",
+      "supervisor": "Shah, Harsh",
+      "supervisorId": "5",
+      "source": "bamboohr"
     }
-  }
+  ]
 }

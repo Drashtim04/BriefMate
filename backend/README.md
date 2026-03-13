@@ -10,6 +10,7 @@
 
 MongoDB (optional unless you use persistence endpoints like `/api/db/*`):
 - `MONGODB_URI` (e.g. `mongodb://localhost:27017/intellihr`)
+- `MONGO_URI` is also accepted as an alias
 
 BambooHR (optional unless you use `/api/bamboohr/*`):
 - `BAMBOOHR_COMPANY` (your BambooHR subdomain)
@@ -24,6 +25,13 @@ Slack (optional unless you use `/api/slack/*`):
 3) Run:
 - Dev: `npm run dev`
 - Prod: `npm start`
+
+4) LLM integration (for `/api/intelligence/*`):
+- `LLM_BASE_URL` (default `http://localhost:8080`)
+- `LLM_PROXY_TIMEOUT_MS` (default `30000`)
+
+5) Frontend integration:
+- `CORS_ORIGIN` (default `http://localhost:5173`, supports comma-separated list)
 
 ## Endpoints
 - `GET /health`
@@ -51,6 +59,17 @@ Slack (optional unless you use `/api/slack/*`):
 - `GET /api/sync/bamboohr-slack/compare`
 - `GET /api/sync/slack-to-bamboohr/plan`
 - `POST /api/sync/slack-to-bamboohr/apply?confirm=true&maxCreates=20`
+
+### Intelligence (LLM proxy)
+- `GET /api/intelligence/health`
+- `GET /api/intelligence/dashboard`
+- `GET /api/intelligence/employees`
+- `GET /api/intelligence/employees/:email/profile`
+- `GET /api/intelligence/meetings`
+- `GET /api/intelligence/meetings/:id/transcript`
+- `POST /api/intelligence/chat/query`
+- `POST /api/intelligence/briefs/upcoming`
+- `POST /api/intelligence/pipeline/run`
 
 Notes:
 - The server never logs your API key.

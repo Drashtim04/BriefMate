@@ -1,21 +1,61 @@
-import { useState } from "react";
-import { Search } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { RefreshCw, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-
-export const EMPLOYEES = [
-  { id: "1", name: "Sarah Jenkins",   email: "sarah.j@company.com",   dept: "Engineering", role: "Frontend Dev",      manager: "Alex Rivera",   joinDate: "Jan 12, 2024", lastMeeting: "2 days ago",  sentiment: "Positive", risk: "Low"    },
-  { id: "2", name: "Michael Chen",    email: "m.chen@company.com",     dept: "Sales",       role: "Account Exec",      manager: "Jessica Wong",  joinDate: "Mar 05, 2023", lastMeeting: "1 week ago",  sentiment: "Neutral",  risk: "Medium" },
-  { id: "3", name: "Elena Rodriguez", email: "elena.r@company.com",    dept: "Design",      role: "Product Designer",  manager: "Sam Taylor",    joinDate: "Nov 20, 2022", lastMeeting: "3 days ago",  sentiment: "Negative", risk: "High"   },
-  { id: "4", name: "David Kim",       email: "d.kim@company.com",      dept: "HR",          role: "Recruiter",         manager: "Alex Rivera",   joinDate: "Jul 15, 2025", lastMeeting: "Today",       sentiment: "Positive", risk: "Low"    },
-  { id: "5", name: "Priya Sharma",    email: "p.sharma@company.com",   dept: "Engineering", role: "Backend Dev",       manager: "Alex Rivera",   joinDate: "Feb 01, 2025", lastMeeting: "1 month ago", sentiment: "Neutral",  risk: "Medium" },
-  { id: "6", name: "Marcus Johnson",  email: "m.johnson@company.com",  dept: "Sales",       role: "Sales Director",    manager: "Jessica Wong",  joinDate: "Sep 10, 2021", lastMeeting: "4 days ago",  sentiment: "Positive", risk: "Low"    },
-];
+import { listEmployees, refreshEmployeePipeline } from "../lib/api";
 
 export function Employees() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
+  const [employees, setEmployees] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [refreshNotice, setRefreshNotice] = useState("");
+  const [refreshingByEmail, setRefreshingByEmail] = useState({});
 
-  const filteredEmployees = EMPLOYEES.filter((emp) => {
+  const loadEmployees = useCallback(async ({ withLoader = true } = {}) => {
+    try {
+      if (withLoader) setIsLoading(true);
+      const data = await listEmployees();
+      setEmployees(data);
+      setError("");
+    } catch (err) {
+      setEmployees([]);
+      setError(err?.message || "Unable to load live employee data");
+    } finally {
+      if (withLoader) setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    loadEmployees();
+    return () => {
+      isMounted = false;
+    };
+  }, [loadEmployees]);
+
+  async function handleRefreshEmployee(person) {
+    const email = String(person?.email || "").toLowerCase();
+    if (!email || refreshingByEmail[email]) {
+      return;
+    }
+
+    setRefreshNotice("");
+    setRefreshingByEmail((prev) => ({ ...prev, [email]: true }));
+
+    try {
+      await refreshEmployeePipeline(email, "manual-refresh");
+      setRefreshNotice(`Refresh queued for ${person.name || email}.`);
+      await loadEmployees({ withLoader: false });
+    } catch (err) {
+      setError(err?.message || "Unable to trigger refresh for employee");
+    } finally {
+      setRefreshingByEmail((prev) => ({ ...prev, [email]: false }));
+    }
+  }
+
+  const filteredEmployees = employees.filter((emp) => {
     const term = search.toLowerCase();
     return (
       emp.name.toLowerCase().includes(term) ||
@@ -29,7 +69,9 @@ export function Employees() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#1f2937]">Employees</h1>
-          <p className="text-gray-500 mt-1">Manage and track your entire workforce here.</p>
+          <p className="text-gray-500 mt-1">
+            {isLoading ? "Loading live workforce data..." : "Manage and track your entire workforce here."}
+          </p>
         </div>
 
         <div className="relative w-full sm:w-72">
@@ -44,6 +86,18 @@ export function Employees() {
         </div>
       </div>
 
+      {error && (
+        <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 px-4 py-2 rounded-lg">
+          Live API unavailable: {error}.
+        </div>
+      )}
+
+      {refreshNotice && (
+        <div className="text-sm text-[#1f7a6c] bg-[#1f7a6c]/10 border border-[#1f7a6c]/20 px-4 py-2 rounded-lg">
+          {refreshNotice}
+        </div>
+      )}
+
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
@@ -54,14 +108,16 @@ export function Employees() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Manager</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Joining Date</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Meeting</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Meetings</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredEmployees.map((person) => (
                 <tr
                   key={person.id}
-                  onClick={() => navigate(`/employees/${person.id}`)}
-                  className="hover:bg-[#1f7a6c]/5 cursor-pointer transition-colors duration-150"
+                  onClick={() => person.email && navigate(`/employees/${encodeURIComponent(person.email)}`)}
+                  className={`transition-colors duration-150 ${person.email ? "hover:bg-[#1f7a6c]/5 cursor-pointer" : ""}`}
                 >
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
@@ -81,11 +137,28 @@ export function Employees() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{person.manager}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{person.joinDate}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{person.lastMeeting}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{person.totalMeetings}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleRefreshEmployee(person);
+                      }}
+                      disabled={!person.email || Boolean(refreshingByEmail[String(person.email).toLowerCase()])}
+                      className="inline-flex items-center gap-2 rounded-md border border-[#1f7a6c]/30 px-3 py-1.5 text-xs font-medium text-[#1f7a6c] hover:bg-[#1f7a6c]/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <RefreshCw
+                        className={`w-3.5 h-3.5 ${Boolean(refreshingByEmail[String(person.email).toLowerCase()]) ? "animate-spin" : ""}`}
+                      />
+                      {Boolean(refreshingByEmail[String(person.email).toLowerCase()]) ? "Refreshing..." : "Refresh"}
+                    </button>
+                  </td>
                 </tr>
               ))}
               {filteredEmployees.length === 0 && (
                 <tr>
-                  <td colSpan="5" className="px-6 py-8 text-center text-sm text-gray-500">
+                  <td colSpan="7" className="px-6 py-8 text-center text-sm text-gray-500">
                     No employees found matching &ldquo;{search}&rdquo;
                   </td>
                 </tr>

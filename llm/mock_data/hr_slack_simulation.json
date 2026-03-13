@@ -1,108 +1,172 @@
 {
-  "general": [],
+  "general": [
+    {
+      "userId": "U0ALRQC7525",
+      "text": "I did not get the promotion I deserved",
+      "timestamp": "1773427934.477819",
+      "threadTs": null,
+      "reactions": [],
+      "realName": "Nihar Mehta"
+    },
+    {
+      "userId": "U0ALRQC7525",
+      "text": "I want to quit",
+      "timestamp": "1773427919.312739",
+      "threadTs": null,
+      "reactions": [],
+      "realName": "Nihar Mehta"
+    },
+    {
+      "userId": "U0ALS92J3NV",
+      "text": "direct messages api se access ho rahe hai?",
+      "timestamp": "1773417516.165059",
+      "threadTs": null,
+      "reactions": [],
+      "realName": "Nikhil Solanki"
+    },
+    {
+      "userId": "U0ALBGWNETY",
+      "text": "hey",
+      "timestamp": "1773416439.642659",
+      "threadTs": null,
+      "reactions": [],
+      "realName": "Harsh Shah"
+    },
+    {
+      "userId": "U0ALBGWNETY",
+      "text": "Parth Srivastava aap kam nai krte toh stress me chle gye",
+      "timestamp": "1773394006.679009",
+      "threadTs": null,
+      "reactions": [],
+      "realName": "Harsh Shah"
+    },
+    {
+      "userId": "U0AM82M3QAC",
+      "text": "Harsh Shah aapke baal kidhr h",
+      "timestamp": "1773393993.303569",
+      "threadTs": null,
+      "reactions": [],
+      "realName": "Parth Srivastava"
+    },
+    {
+      "userId": "U0ALBGWNETY",
+      "text": "Nikhil Solanki kaam kar na",
+      "timestamp": "1773392287.498559",
+      "threadTs": null,
+      "reactions": [],
+      "realName": "Harsh Shah"
+    }
+  ],
+  "random": [],
   "hr_discussions": [
     {
-      "userId": "U0_SARAH_HR",
-      "text": "Hi <@U0_ALEX_ENG>, checking in before our review. I noticed you have been quieter in team channels. How are things going?",
-      "timestamp": "1762501200.000000",
+      "userId": "U0ALBGWNETY",
+      "text": "Nikhil Solanki kaam kar na",
+      "timestamp": "1773392287.498559",
       "threadTs": null,
       "reactions": [],
-      "realName": "Sarah Jenkins"
+      "realName": "Harsh Shah"
     },
     {
-      "userId": "U0_ALEX_ENG",
-      "text": "Thanks for reaching out. I have been overloaded for weeks and the workload still feels unsustainable. I am mostly responding only when directly tagged.",
-      "timestamp": "1762501860.000000",
+      "userId": "U0AM82M3QAC",
+      "text": "Harsh Shah aapke baal kidhr h",
+      "timestamp": "1773393993.303569",
       "threadTs": null,
       "reactions": [],
-      "realName": "Alex Chen"
+      "realName": "Parth Srivastava"
     },
     {
-      "userId": "U0_SARAH_HR",
-      "text": "I am sorry to hear that. Have you discussed this with your manager and gotten support?",
-      "timestamp": "1762502280.000000",
+      "userId": "U0ALBGWNETY",
+      "text": "Parth Srivastava aap kam nai krte toh stress me chle gye",
+      "timestamp": "1773394006.679009",
       "threadTs": null,
       "reactions": [],
-      "realName": "Sarah Jenkins"
+      "realName": "Harsh Shah"
     },
     {
-      "userId": "U0_ALEX_ENG",
-      "text": "Yes, but there is ongoing manager conflict on priorities. I was passed over for promotion without explanation and it is hard to stay motivated.",
-      "timestamp": "1762502760.000000",
-      "threadTs": "1762502760.000000",
-      "reactions": [],
-      "realName": "Alex Chen"
-    },
-    {
-      "userId": "U0_SARAH_HR",
-      "text": "Thanks for sharing this clearly. Let us document actions and timelines. Would a three-way meeting with your manager help this week?",
-      "timestamp": "1762503180.000000",
-      "threadTs": "1762502760.000000",
-      "reactions": [
-        {
-          "name": "white_check_mark",
-          "users": ["U0_ALEX_ENG"],
-          "count": 1
-        }
-      ],
-      "realName": "Sarah Jenkins"
-    },
-    {
-      "userId": "U0_ALEX_ENG",
-      "text": "Yes please. I also need written promotion criteria because my career path is unclear right now.",
-      "timestamp": "1762503540.000000",
-      "threadTs": "1762502760.000000",
-      "reactions": [],
-      "realName": "Alex Chen"
-    },
-    {
-      "userId": "U0_ALEX_ENG",
-      "text": "If this does not improve soon, I will need to reassess my options. I do not want to continue in this state another quarter.",
-      "timestamp": "1762589200.000000",
+      "userId": "U0ALBGWNETY",
+      "text": "hey",
+      "timestamp": "1773416439.642659",
       "threadTs": null,
       "reactions": [],
-      "realName": "Alex Chen"
+      "realName": "Harsh Shah"
     },
     {
-      "userId": "U0_SARAH_HR",
-      "text": "Understood. Let us meet tomorrow with a concrete recovery plan and ownership matrix.",
-      "timestamp": "1762589800.000000",
-      "threadTs": "1762589200.000000",
-      "reactions": [
-        {
-          "name": "eyes",
-          "users": ["U0_ALEX_ENG"],
-          "count": 1
-        }
-      ],
-      "realName": "Sarah Jenkins"
+      "userId": "U0ALS92J3NV",
+      "text": "direct messages api se access ho rahe hai?",
+      "timestamp": "1773417516.165059",
+      "threadTs": null,
+      "reactions": [],
+      "realName": "Nikhil Solanki"
+    },
+    {
+      "userId": "U0ALRQC7525",
+      "text": "I want to quit",
+      "timestamp": "1773427919.312739",
+      "threadTs": null,
+      "reactions": [],
+      "realName": "Nihar Mehta"
+    },
+    {
+      "userId": "U0ALRQC7525",
+      "text": "I did not get the promotion I deserved",
+      "timestamp": "1773427934.477819",
+      "threadTs": null,
+      "reactions": [],
+      "realName": "Nihar Mehta"
     }
   ],
   "members": [
     {
-      "userId": "U0_SARAH_HR",
-      "name": "sarah.jenkins",
-      "realName": "Sarah Jenkins",
-      "displayName": "Sarah Jenkins (HRBP)",
-      "email": "sarah.jenkins@company.com",
-      "profileImage": "https://avatars.slack-edge.com/hr_sarah.jpg"
+      "userId": "U0ALBGWNETY",
+      "name": "harshdshah333",
+      "realName": "Harsh Shah",
+      "displayName": "Harsh Shah",
+      "email": "harshdshah333@gmail.com",
+      "profileImage": "https://avatars.slack-edge.com/2026-03-13/10721899696016_af0fb4284aaee2e5d136_192.jpg"
     },
     {
-      "userId": "U0_ALEX_ENG",
-      "name": "alex.chen",
-      "realName": "Alex Chen",
-      "displayName": "Alex Chen",
-      "email": "alex.chen@company.com",
-      "profileImage": "https://avatars.slack-edge.com/eng_alex.jpg"
+      "userId": "U0ALRQC7525",
+      "name": "niharmehta245",
+      "realName": "Nihar Mehta",
+      "displayName": "Nihar Mehta",
+      "email": "niharmehta245@gmail.com",
+      "profileImage": "https://secure.gravatar.com/avatar/a5bc3739fea02c7de5cbcba4ceb906cc.jpg?s=192&d=https%3A%2F%2Fa.slack-edge.com%2Fdf10d%2Fimg%2Favatars%2Fava_0019-192.png"
+    },
+    {
+      "userId": "U0ALS92J3NV",
+      "name": "nikhilsolanki9876",
+      "realName": "Nikhil Solanki",
+      "displayName": "Nikhil Solanki",
+      "email": "nikhilsolanki9876@gmail.com",
+      "profileImage": "https://avatars.slack-edge.com/2026-03-13/10691345754022_9558b9484ee41bc276a3_192.jpg"
+    },
+    {
+      "userId": "U0AM7JQC132",
+      "name": "drashtimaheswari20",
+      "realName": "Drashti Maheswari",
+      "displayName": "Drashti Maheswari",
+      "email": "drashtimaheswari20@gmail.com",
+      "profileImage": "https://avatars.slack-edge.com/2026-03-13/10689941176629_97be8da30d1d6e28cfa1_192.png"
+    },
+    {
+      "userId": "U0AM82M3QAC",
+      "name": "parth.srivastava660",
+      "realName": "Parth Srivastava",
+      "displayName": "Parth Srivastava",
+      "email": "parth.srivastava660@gmail.com",
+      "profileImage": "https://avatars.slack-edge.com/2026-03-13/10687431723379_cfb87e4d1eebdf23f774_192.png"
     }
   ],
   "summary": {
-    "totalMessages": 8,
+    "totalMessages": 7,
     "messagesByMember": {
-      "Sarah Jenkins": 4,
-      "Alex Chen": 4
+      "Harsh Shah": 3,
+      "Parth Srivastava": 1,
+      "Nikhil Solanki": 1,
+      "Nihar Mehta": 2
     },
-    "mostActiveChannel": "hr_discussions",
-    "fetchedAt": "2026-03-13T11:58:00.000Z"
+    "mostActiveChannel": "general",
+    "fetchedAt": "2026-03-13T19:21:26.822Z"
   }
 }

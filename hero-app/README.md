@@ -14,3 +14,25 @@ The React Compiler is not enabled on this template because of its impact on dev 
 ## Expanding the ESLint configuration
 
 If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+
+## API Integration
+
+Create a local env file:
+
+```bash
+cp .env.example .env.local
+```
+
+Or set manually in `.env.local`:
+
+```bash
+VITE_BACKEND_BASE_URL=http://localhost:4000
+VITE_ORG_ID=demo
+```
+
+The app calls backend endpoints under `/api/intelligence/*` for:
+
+- Dashboard summary
+- Employee list and profile details
+- Meetings and transcript expansion
+- Chat assistant responses

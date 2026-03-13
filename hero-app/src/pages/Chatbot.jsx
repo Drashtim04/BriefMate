@@ -1,37 +1,49 @@
 import { useState } from "react";
 import { Send, Bot, User, Menu } from "lucide-react";
+import { sendChatQuery } from "../lib/api";
 
 export function Chatbot() {
   const [input, setInput] = useState("");
-  const [chatHistory, setChatHistory] = useState([
-    { id: 1, text: "Summarize Rahul Sharma's last meeting" },
-    { id: 2, text: "Show me Q2 engagement metrics" }
-  ]);
+  const [isSending, setIsSending] = useState(false);
+  const [chatHistory, setChatHistory] = useState([]);
   const [messages, setMessages] = useState([
     { sender: "bot", text: "Hello! I'm your HR Intelligence Assistant. How can I help you today?" }
   ]);
 
-  const SUGGESTED_PROMPTS = [
-    "Summarize Rahul Sharma's last meeting",
-    "What employees show burnout risk?",
-    "Generate meeting preparation notes"
-  ];
+  const SUGGESTED_PROMPTS = [];
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!input.trim()) return;
+    if (isSending) return;
+    const nextInput = input.trim();
+    setIsSending(true);
     
     // Add user message
-    setMessages(prev => [...prev, { sender: "user", text: input }]);
-    
-    // Mock bot response
-    setTimeout(() => {
-      setMessages(prev => [...prev, { 
-        sender: "bot", 
-        text: "I can help you with that! As an AI prototype, I'm currently not connected to a live database, but I'm designed to assist with retrieving employee insights, summarizing transcripts, and identifying risk factors." 
-      }]);
-    }, 1000);
-    
+    setMessages(prev => [...prev, { sender: "user", text: nextInput }]);
+    setChatHistory((prev) => [{ id: Date.now(), text: nextInput }, ...prev].slice(0, 8));
     setInput("");
+
+    try {
+      const result = await sendChatQuery(nextInput);
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "bot",
+          text: result.answer || "I could not generate a response for that request.",
+        },
+      ]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "bot",
+          text:
+            "The intelligence backend is currently unavailable. Please verify backend and LLM services are running, then try again.",
+        },
+      ]);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const fillPrompt = (text) => setInput(text);
@@ -78,17 +90,19 @@ export function Chatbot() {
 
         {/* Bottom Panel - Input & Suggestions */}
         <div className="p-4 bg-white border-t border-gray-200">
-          <div className="flex flex-wrap gap-2 mb-4 justify-center">
-            {SUGGESTED_PROMPTS.map((prompt, i) => (
-              <button 
-                key={i} 
-                className="px-3 py-1.5 text-xs text-[#1f7a6c] bg-[#1f7a6c]/10 hover:bg-[#1f7a6c]/20 rounded-full transition-colors border border-[#1f7a6c]/20"
-                onClick={() => fillPrompt(prompt)}
-              >
-                {prompt}
-              </button>
-            ))}
-          </div>
+          {SUGGESTED_PROMPTS.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-4 justify-center">
+              {SUGGESTED_PROMPTS.map((prompt, i) => (
+                <button 
+                  key={i} 
+                  className="px-3 py-1.5 text-xs text-[#1f7a6c] bg-[#1f7a6c]/10 hover:bg-[#1f7a6c]/20 rounded-full transition-colors border border-[#1f7a6c]/20"
+                  onClick={() => fillPrompt(prompt)}
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="relative flex items-center max-w-4xl mx-auto">
             <input
@@ -101,6 +115,7 @@ export function Chatbot() {
             />
             <button 
               onClick={handleSend}
+              disabled={isSending}
               className="absolute right-2 p-1.5 bg-[#1f7a6c] text-white rounded-lg hover:bg-[#165a50] transition-colors"
             >
               <Send className="w-5 h-5" />

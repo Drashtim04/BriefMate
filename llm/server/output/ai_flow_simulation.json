@@ -1,0 +1,945 @@
+{
+  "mode": "mock",
+  "generatedAt": "2026-03-13T15:01:07.740Z",
+  "identity": {
+    "email": "alex.chen@company.com",
+    "employeeId": "10425",
+    "displayName": "Alex Chen",
+    "role": "Software Engineer",
+    "department": "Engineering"
+  },
+  "timeline": [
+    {
+      "eventType": "initial_profile_build",
+      "processedAt": "2026-03-13T15:01:07.735Z",
+      "profileVersion": {
+        "version": 1,
+        "updatedAt": "2026-03-13T15:01:07.735Z",
+        "eventType": "initial_profile_build",
+        "profile": {
+          "healthScore": 32,
+          "healthBand": "critical",
+          "componentScores": {
+            "sentimentScore": 28,
+            "retentionRiskScore": 100,
+            "retentionSafetyScore": 0,
+            "engagementScore": 100,
+            "hrmsIndicatorScore": 39
+          },
+          "weightedBreakdown": {
+            "sentiment": 8.4,
+            "retentionSafety": 0,
+            "engagement": 20,
+            "hrmsIndicators": 3.9
+          },
+          "evidence": {
+            "sentiment": "Positive cues: 10; stress cues: 13.",
+            "engagement": "Slack events: 8; transcript turns: 36; activity penalty: 20.",
+            "hrmsIndicators": "Goals at risk/blocked: 3."
+          },
+          "retentionRisk": {
+            "riskScore": 100,
+            "riskLevel": "critical",
+            "signals": [
+              {
+                "tier": "high",
+                "signal": "reduced slack activity by 50%+",
+                "evidence": "Hi <@U0_ALEX_ENG>, checking in before our review. I noticed you have been quieter in team channels. How are things going?",
+                "source": "slack",
+                "confidence": 0.8
+              },
+              {
+                "tier": "high",
+                "signal": "workload complaints over 3+ weeks",
+                "evidence": "Thanks for reaching out. I have been overloaded for weeks and the workload still feels unsustainable. I am mostly responding only when directly tagged.",
+                "source": "slack",
+                "confidence": 0.8
+              },
+              {
+                "tier": "high",
+                "signal": "promotion passed over without explanation",
+                "evidence": "Yes, but there is ongoing manager conflict on priorities. I was passed over for promotion without explanation and it is hard to stay motivated.",
+                "source": "slack",
+                "confidence": 0.8
+              },
+              {
+                "tier": "high",
+                "signal": "manager conflict mentioned",
+                "evidence": "Yes, but there is ongoing manager conflict on priorities. I was passed over for promotion without explanation and it is hard to stay motivated.",
+                "source": "slack",
+                "confidence": 0.8
+              },
+              {
+                "tier": "medium",
+                "signal": "unclear career path mentioned",
+                "evidence": "Yes please. I also need written promotion criteria because my career path is unclear right now.",
+                "source": "slack",
+                "confidence": 0.8
+              },
+              {
+                "tier": "critical",
+                "signal": "mentioned other companies or opportunities",
+                "evidence": "If this does not improve soon, I will need to reassess my options. I do not want to continue in this state another quarter.",
+                "source": "slack",
+                "confidence": 0.8
+              },
+              {
+                "tier": "medium",
+                "signal": "work life balance concerns",
+                "evidence": "Honestly, not great. I have been running on low energy for a while and it feels like every sprint has been fire-fighting mode.",
+                "source": "transcript",
+                "confidence": 0.8
+              },
+              {
+                "tier": "critical",
+                "signal": "expressed feeling undervalued repeatedly",
+                "evidence": "No, and that is a big part of the frustration. I have led incidents, mentored juniors, and delivered migration work, but I still feel undervalued compared with peers who had clearer sponsorship.",
+                "source": "transcript",
+                "confidence": 0.8
+              },
+              {
+                "tier": "low",
+                "signal": "minor frustrations expressed",
+                "evidence": "No, and that is a big part of the frustration. I have led incidents, mentored juniors, and delivered migration work, but I still feel undervalued compared with peers who had clearer sponsorship.",
+                "source": "transcript",
+                "confidence": 0.8
+              },
+              {
+                "tier": "medium",
+                "signal": "team dynamics issues raised",
+                "evidence": "First, written promotion criteria. Second, a realistic workload split so I am not on incident and feature deadlines every week. Third, better manager alignment on priorities.",
+                "source": "transcript",
+                "confidence": 0.8
+              }
+            ],
+            "summary": "Detected 10 retention signals with strongest tier high."
+          },
+          "analyzedAt": "2026-03-13T15:01:07.735Z"
+        },
+        "delta": {
+          "changedFields": [
+            {
+              "field": "profile",
+              "from": null,
+              "to": "initialized",
+              "reason": "Initial profile generated from unified context."
+            }
+          ]
+        }
+      },
+      "meetingBrief": {
+        "generated": true,
+        "trigger": {
+          "shouldGenerate": true,
+          "reasons": [
+            "meeting_within_24h",
+            "manual_request"
+          ],
+          "hoursToMeeting": 1.5
+        },
+        "brief": {
+          "currentHealthScore": 32,
+          "healthBand": "critical",
+          "whatChangedSinceLastMeeting": [
+            "Initial profile created from current Slack, transcript, and HRMS snapshot."
+          ],
+          "openFollowUps": [
+            {
+              "owner": "Sarah Jenkins",
+              "task": "Schedule three-way manager alignment discussion",
+              "status": "in_progress"
+            },
+            {
+              "owner": "Sarah Jenkins",
+              "task": "Share promotion criteria and timeline document",
+              "status": "open"
+            }
+          ],
+          "conversationStarters": [
+            "What would make your career path and promotion criteria feel clear over the next quarter?",
+            "Which two workload changes would most improve sustainability this sprint?",
+            "Where are priority expectations still misaligned between you and your manager?"
+          ],
+          "handleCarefully": [
+            "reduced slack activity by 50%+",
+            "workload complaints over 3+ weeks",
+            "promotion passed over without explanation"
+          ],
+          "personalContext": [
+            "Location: San Francisco (HQ)",
+            "Role: Software Engineer, Engineering",
+            "Manager: Michael Rodriguez",
+            "Upcoming leave: Stress Recovery Leave (2026-03-20 to 2026-03-24)"
+          ],
+          "recommendedTone": "calm, empathetic, and action-focused with explicit accountability",
+          "executiveSummary": "Escalated retention concern requires immediate CHRO intervention with concrete commitments."
+        }
+      },
+      "alerts": [
+        {
+          "kind": "critical_risk",
+          "severity": "critical",
+          "channel": "email+dashboard",
+          "message": "Employee risk reached CRITICAL. Immediate CHRO intervention recommended.",
+          "createdAt": "2026-03-13T15:01:07.735Z",
+          "eventType": "initial_profile_build"
+        },
+        {
+          "kind": "chro_commitment_unresolved",
+          "severity": "medium",
+          "channel": "dashboard",
+          "message": "2 commitment(s) are unresolved before the next check-in.",
+          "createdAt": "2026-03-13T15:01:07.735Z",
+          "eventType": "initial_profile_build"
+        },
+        {
+          "kind": "meeting_brief_ready",
+          "severity": "info",
+          "channel": "dashboard",
+          "message": "Meeting starts in under 2 hours. Brief is ready.",
+          "createdAt": "2026-03-13T15:01:07.735Z",
+          "eventType": "initial_profile_build"
+        }
+      ]
+    },
+    {
+      "eventType": "slack_message_debounced_reanalysis",
+      "processedAt": "2026-03-13T15:11:07.735Z",
+      "profileVersion": {
+        "version": 2,
+        "updatedAt": "2026-03-13T15:11:07.735Z",
+        "eventType": "slack_message_debounced_reanalysis",
+        "profile": {
+          "healthScore": 32,
+          "healthBand": "critical",
+          "componentScores": {
+            "sentimentScore": 28,
+            "retentionRiskScore": 100,
+            "retentionSafetyScore": 0,
+            "engagementScore": 100,
+            "hrmsIndicatorScore": 39
+          },
+          "weightedBreakdown": {
+            "sentiment": 8.4,
+            "retentionSafety": 0,
+            "engagement": 20,
+            "hrmsIndicators": 3.9
+          },
+          "evidence": {
+            "sentiment": "Positive cues: 10; stress cues: 13.",
+            "engagement": "Slack events: 10; transcript turns: 36; activity penalty: 20.",
+            "hrmsIndicators": "Goals at risk/blocked: 3."
+          },
+          "retentionRisk": {
+            "riskScore": 100,
+            "riskLevel": "critical",
+            "signals": [
+              {
+                "tier": "high",
+                "signal": "reduced slack activity by 50%+",
+                "evidence": "Hi <@U0_ALEX_ENG>, checking in before our review. I noticed you have been quieter in team channels. How are things going?",
+                "source": "slack",
+                "confidence": 0.8
+              },
+              {
+                "tier": "high",
+                "signal": "workload complaints over 3+ weeks",
+                "evidence": "Thanks for reaching out. I have been overloaded for weeks and the workload still feels unsustainable. I am mostly responding only when directly tagged.",
+                "source": "slack",
+                "confidence": 0.8
+              },
+              {
+                "tier": "high",
+                "signal": "promotion passed over without explanation",
+                "evidence": "Yes, but there is ongoing manager conflict on priorities. I was passed over for promotion without explanation and it is hard to stay motivated.",
+                "source": "slack",
+                "confidence": 0.8
+              },
+              {
+                "tier": "high",
+                "signal": "manager conflict mentioned",
+                "evidence": "Yes, but there is ongoing manager conflict on priorities. I was passed over for promotion without explanation and it is hard to stay motivated.",
+                "source": "slack",
+                "confidence": 0.8
+              },
+              {
+                "tier": "medium",
+                "signal": "unclear career path mentioned",
+                "evidence": "Yes please. I also need written promotion criteria because my career path is unclear right now.",
+                "source": "slack",
+                "confidence": 0.8
+              },
+              {
+                "tier": "critical",
+                "signal": "mentioned other companies or opportunities",
+                "evidence": "If this does not improve soon, I will need to reassess my options. I do not want to continue in this state another quarter.",
+                "source": "slack",
+                "confidence": 0.8
+              },
+              {
+                "tier": "critical",
+                "signal": "referenced linkedin or job search",
+                "evidence": "I updated my LinkedIn profile this week and recruiters have been reaching out. I may need to explore external opportunities if this workload does not change.",
+                "source": "slack",
+                "confidence": 0.8
+              },
+              {
+                "tier": "critical",
+                "signal": "asked about internal transfers",
+                "evidence": "If internal transfer options exist, I would like to understand them in the next conversation.",
+                "source": "slack",
+                "confidence": 0.8
+              },
+              {
+                "tier": "medium",
+                "signal": "work life balance concerns",
+                "evidence": "Honestly, not great. I have been running on low energy for a while and it feels like every sprint has been fire-fighting mode.",
+                "source": "transcript",
+                "confidence": 0.8
+              },
+              {
+                "tier": "critical",
+                "signal": "expressed feeling undervalued repeatedly",
+                "evidence": "No, and that is a big part of the frustration. I have led incidents, mentored juniors, and delivered migration work, but I still feel undervalued compared with peers who had clearer sponsorship.",
+                "source": "transcript",
+                "confidence": 0.8
+              },
+              {
+                "tier": "low",
+                "signal": "minor frustrations expressed",
+                "evidence": "No, and that is a big part of the frustration. I have led incidents, mentored juniors, and delivered migration work, but I still feel undervalued compared with peers who had clearer sponsorship.",
+                "source": "transcript",
+                "confidence": 0.8
+              },
+              {
+                "tier": "medium",
+                "signal": "team dynamics issues raised",
+                "evidence": "First, written promotion criteria. Second, a realistic workload split so I am not on incident and feature deadlines every week. Third, better manager alignment on priorities.",
+                "source": "transcript",
+                "confidence": 0.8
+              }
+            ],
+            "summary": "Detected 12 retention signals with strongest tier high."
+          },
+          "analyzedAt": "2026-03-13T15:11:07.735Z"
+        },
+        "delta": {
+          "changedFields": [
+            {
+              "field": "addedRetentionSignals",
+              "from": null,
+              "to": [
+                "referenced linkedin or job search",
+                "asked about internal transfers"
+              ],
+              "reason": "New retention language patterns were detected."
+            }
+          ]
+        }
+      },
+      "meetingBrief": {
+        "generated": true,
+        "trigger": {
+          "shouldGenerate": true,
+          "reasons": [
+            "meeting_within_24h"
+          ],
+          "hoursToMeeting": 6
+        },
+        "brief": {
+          "currentHealthScore": 32,
+          "healthBand": "critical",
+          "whatChangedSinceLastMeeting": [
+            "No material changes detected since previous profile."
+          ],
+          "openFollowUps": [
+            {
+              "owner": "Sarah Jenkins",
+              "task": "Schedule three-way manager alignment discussion",
+              "status": "in_progress"
+            },
+            {
+              "owner": "Sarah Jenkins",
+              "task": "Share promotion criteria and timeline document",
+              "status": "open"
+            }
+          ],
+          "conversationStarters": [
+            "What would make your career path and promotion criteria feel clear over the next quarter?",
+            "Which two workload changes would most improve sustainability this sprint?",
+            "Where are priority expectations still misaligned between you and your manager?"
+          ],
+          "handleCarefully": [
+            "reduced slack activity by 50%+",
+            "workload complaints over 3+ weeks",
+            "promotion passed over without explanation"
+          ],
+          "personalContext": [
+            "Location: San Francisco (HQ)",
+            "Role: Software Engineer, Engineering",
+            "Manager: Michael Rodriguez",
+            "Upcoming leave: Stress Recovery Leave (2026-03-20 to 2026-03-24)"
+          ],
+          "recommendedTone": "calm, empathetic, and action-focused with explicit accountability",
+          "executiveSummary": "Escalated retention concern requires immediate CHRO intervention with concrete commitments."
+        }
+      },
+      "alerts": [
+        {
+          "kind": "critical_risk",
+          "severity": "critical",
+          "channel": "email+dashboard",
+          "message": "Employee risk reached CRITICAL. Immediate CHRO intervention recommended.",
+          "createdAt": "2026-03-13T15:11:07.735Z",
+          "eventType": "slack_message_debounced_reanalysis"
+        },
+        {
+          "kind": "chro_commitment_unresolved",
+          "severity": "medium",
+          "channel": "dashboard",
+          "message": "2 commitment(s) are unresolved before the next check-in.",
+          "createdAt": "2026-03-13T15:11:07.735Z",
+          "eventType": "slack_message_debounced_reanalysis"
+        }
+      ]
+    },
+    {
+      "eventType": "meeting_transcript_priority_reanalysis",
+      "processedAt": "2026-03-13T16:21:07.735Z",
+      "profileVersion": {
+        "version": 3,
+        "updatedAt": "2026-03-13T16:21:07.735Z",
+        "eventType": "meeting_transcript_priority_reanalysis",
+        "profile": {
+          "healthScore": 41,
+          "healthBand": "monitor",
+          "componentScores": {
+            "sentimentScore": 61,
+            "retentionRiskScore": 100,
+            "retentionSafetyScore": 0,
+            "engagementScore": 96,
+            "hrmsIndicatorScore": 39
+          },
+          "weightedBreakdown": {
+            "sentiment": 18.3,
+            "retentionSafety": 0,
+            "engagement": 19.2,
+            "hrmsIndicators": 3.9
+          },
+          "evidence": {
+            "sentiment": "Positive cues: 3; stress cues: 4.",
+            "engagement": "Slack events: 10; transcript turns: 4; activity penalty: 10.",
+            "hrmsIndicators": "Goals at risk/blocked: 3."
+          },
+          "retentionRisk": {
+            "riskScore": 100,
+            "riskLevel": "critical",
+            "signals": [
+              {
+                "tier": "high",
+                "signal": "reduced slack activity by 50%+",
+                "evidence": "Hi <@U0_ALEX_ENG>, checking in before our review. I noticed you have been quieter in team channels. How are things going?",
+                "source": "slack",
+                "confidence": 0.8
+              },
+              {
+                "tier": "high",
+                "signal": "workload complaints over 3+ weeks",
+                "evidence": "Thanks for reaching out. I have been overloaded for weeks and the workload still feels unsustainable. I am mostly responding only when directly tagged.",
+                "source": "slack",
+                "confidence": 0.8
+              },
+              {
+                "tier": "high",
+                "signal": "promotion passed over without explanation",
+                "evidence": "Yes, but there is ongoing manager conflict on priorities. I was passed over for promotion without explanation and it is hard to stay motivated.",
+                "source": "slack",
+                "confidence": 0.8
+              },
+              {
+                "tier": "high",
+                "signal": "manager conflict mentioned",
+                "evidence": "Yes, but there is ongoing manager conflict on priorities. I was passed over for promotion without explanation and it is hard to stay motivated.",
+                "source": "slack",
+                "confidence": 0.8
+              },
+              {
+                "tier": "medium",
+                "signal": "unclear career path mentioned",
+                "evidence": "Yes please. I also need written promotion criteria because my career path is unclear right now.",
+                "source": "slack",
+                "confidence": 0.8
+              },
+              {
+                "tier": "critical",
+                "signal": "mentioned other companies or opportunities",
+                "evidence": "If this does not improve soon, I will need to reassess my options. I do not want to continue in this state another quarter.",
+                "source": "slack",
+                "confidence": 0.8
+              },
+              {
+                "tier": "critical",
+                "signal": "referenced linkedin or job search",
+                "evidence": "I updated my LinkedIn profile this week and recruiters have been reaching out. I may need to explore external opportunities if this workload does not change.",
+                "source": "slack",
+                "confidence": 0.8
+              },
+              {
+                "tier": "critical",
+                "signal": "asked about internal transfers",
+                "evidence": "If internal transfer options exist, I would like to understand them in the next conversation.",
+                "source": "slack",
+                "confidence": 0.8
+              },
+              {
+                "tier": "medium",
+                "signal": "team dynamics issues raised",
+                "evidence": "Great. We will review progress weekly and keep manager alignment documented.",
+                "source": "transcript",
+                "confidence": 0.8
+              }
+            ],
+            "summary": "Detected 9 retention signals with strongest tier high."
+          },
+          "analyzedAt": "2026-03-13T16:21:07.735Z"
+        },
+        "delta": {
+          "changedFields": [
+            {
+              "field": "healthScore",
+              "from": 32,
+              "to": 41,
+              "reason": "Recomputed from latest context and signal set."
+            },
+            {
+              "field": "healthBand",
+              "from": "critical",
+              "to": "monitor",
+              "reason": "Recomputed from latest context and signal set."
+            },
+            {
+              "field": "sentimentScore",
+              "from": 28,
+              "to": 61,
+              "reason": "Recomputed from latest context and signal set."
+            },
+            {
+              "field": "engagementScore",
+              "from": 100,
+              "to": 96,
+              "reason": "Recomputed from latest context and signal set."
+            },
+            {
+              "field": "removedRetentionSignals",
+              "from": [
+                "work life balance concerns",
+                "expressed feeling undervalued repeatedly",
+                "minor frustrations expressed"
+              ],
+              "to": null,
+              "reason": "Previously detected risk signals no longer appeared in latest context."
+            }
+          ]
+        }
+      },
+      "meetingBrief": {
+        "generated": true,
+        "trigger": {
+          "shouldGenerate": true,
+          "reasons": [
+            "meeting_within_24h"
+          ],
+          "hoursToMeeting": 0.75
+        },
+        "brief": {
+          "currentHealthScore": 41,
+          "healthBand": "monitor",
+          "whatChangedSinceLastMeeting": [
+            "Health score changed by +9 points."
+          ],
+          "openFollowUps": [
+            {
+              "owner": "Engineering Manager",
+              "task": "Confirm revised workload split and on-call rotation",
+              "status": "in_progress"
+            }
+          ],
+          "conversationStarters": [
+            "What would make your career path and promotion criteria feel clear over the next quarter?",
+            "Which two workload changes would most improve sustainability this sprint?",
+            "Where are priority expectations still misaligned between you and your manager?"
+          ],
+          "handleCarefully": [
+            "reduced slack activity by 50%+",
+            "workload complaints over 3+ weeks",
+            "promotion passed over without explanation"
+          ],
+          "personalContext": [
+            "Location: San Francisco (HQ)",
+            "Role: Software Engineer, Engineering",
+            "Manager: Michael Rodriguez",
+            "Upcoming leave: Stress Recovery Leave (2026-03-20 to 2026-03-24)"
+          ],
+          "recommendedTone": "calm, empathetic, and action-focused with explicit accountability",
+          "executiveSummary": "Escalated retention concern requires immediate CHRO intervention with concrete commitments."
+        }
+      },
+      "alerts": [
+        {
+          "kind": "critical_risk",
+          "severity": "critical",
+          "channel": "email+dashboard",
+          "message": "Employee risk reached CRITICAL. Immediate CHRO intervention recommended.",
+          "createdAt": "2026-03-13T16:21:07.735Z",
+          "eventType": "meeting_transcript_priority_reanalysis"
+        },
+        {
+          "kind": "chro_commitment_unresolved",
+          "severity": "medium",
+          "channel": "dashboard",
+          "message": "1 commitment(s) are unresolved before the next check-in.",
+          "createdAt": "2026-03-13T16:21:07.735Z",
+          "eventType": "meeting_transcript_priority_reanalysis"
+        },
+        {
+          "kind": "meeting_brief_ready",
+          "severity": "info",
+          "channel": "dashboard",
+          "message": "Meeting starts in under 2 hours. Brief is ready.",
+          "createdAt": "2026-03-13T16:21:07.735Z",
+          "eventType": "meeting_transcript_priority_reanalysis"
+        }
+      ]
+    }
+  ],
+  "latestProfile": {
+    "identity": {
+      "email": "alex.chen@company.com",
+      "employeeId": "10425",
+      "displayName": "Alex Chen",
+      "role": "Software Engineer",
+      "department": "Engineering"
+    },
+    "profileVersion": 3,
+    "profile": {
+      "healthScore": 41,
+      "healthBand": "monitor",
+      "componentScores": {
+        "sentimentScore": 61,
+        "retentionRiskScore": 100,
+        "retentionSafetyScore": 0,
+        "engagementScore": 96,
+        "hrmsIndicatorScore": 39
+      },
+      "weightedBreakdown": {
+        "sentiment": 18.3,
+        "retentionSafety": 0,
+        "engagement": 19.2,
+        "hrmsIndicators": 3.9
+      },
+      "evidence": {
+        "sentiment": "Positive cues: 3; stress cues: 4.",
+        "engagement": "Slack events: 10; transcript turns: 4; activity penalty: 10.",
+        "hrmsIndicators": "Goals at risk/blocked: 3."
+      },
+      "retentionRisk": {
+        "riskScore": 100,
+        "riskLevel": "critical",
+        "signals": [
+          {
+            "tier": "high",
+            "signal": "reduced slack activity by 50%+",
+            "evidence": "Hi <@U0_ALEX_ENG>, checking in before our review. I noticed you have been quieter in team channels. How are things going?",
+            "source": "slack",
+            "confidence": 0.8
+          },
+          {
+            "tier": "high",
+            "signal": "workload complaints over 3+ weeks",
+            "evidence": "Thanks for reaching out. I have been overloaded for weeks and the workload still feels unsustainable. I am mostly responding only when directly tagged.",
+            "source": "slack",
+            "confidence": 0.8
+          },
+          {
+            "tier": "high",
+            "signal": "promotion passed over without explanation",
+            "evidence": "Yes, but there is ongoing manager conflict on priorities. I was passed over for promotion without explanation and it is hard to stay motivated.",
+            "source": "slack",
+            "confidence": 0.8
+          },
+          {
+            "tier": "high",
+            "signal": "manager conflict mentioned",
+            "evidence": "Yes, but there is ongoing manager conflict on priorities. I was passed over for promotion without explanation and it is hard to stay motivated.",
+            "source": "slack",
+            "confidence": 0.8
+          },
+          {
+            "tier": "medium",
+            "signal": "unclear career path mentioned",
+            "evidence": "Yes please. I also need written promotion criteria because my career path is unclear right now.",
+            "source": "slack",
+            "confidence": 0.8
+          },
+          {
+            "tier": "critical",
+            "signal": "mentioned other companies or opportunities",
+            "evidence": "If this does not improve soon, I will need to reassess my options. I do not want to continue in this state another quarter.",
+            "source": "slack",
+            "confidence": 0.8
+          },
+          {
+            "tier": "critical",
+            "signal": "referenced linkedin or job search",
+            "evidence": "I updated my LinkedIn profile this week and recruiters have been reaching out. I may need to explore external opportunities if this workload does not change.",
+            "source": "slack",
+            "confidence": 0.8
+          },
+          {
+            "tier": "critical",
+            "signal": "asked about internal transfers",
+            "evidence": "If internal transfer options exist, I would like to understand them in the next conversation.",
+            "source": "slack",
+            "confidence": 0.8
+          },
+          {
+            "tier": "medium",
+            "signal": "team dynamics issues raised",
+            "evidence": "Great. We will review progress weekly and keep manager alignment documented.",
+            "source": "transcript",
+            "confidence": 0.8
+          }
+        ],
+        "summary": "Detected 9 retention signals with strongest tier high."
+      },
+      "analyzedAt": "2026-03-13T16:21:07.735Z"
+    },
+    "meetingBrief": {
+      "generated": true,
+      "trigger": {
+        "shouldGenerate": true,
+        "reasons": [
+          "meeting_within_24h"
+        ],
+        "hoursToMeeting": 0.75
+      },
+      "brief": {
+        "currentHealthScore": 41,
+        "healthBand": "monitor",
+        "whatChangedSinceLastMeeting": [
+          "Health score changed by +9 points."
+        ],
+        "openFollowUps": [
+          {
+            "owner": "Engineering Manager",
+            "task": "Confirm revised workload split and on-call rotation",
+            "status": "in_progress"
+          }
+        ],
+        "conversationStarters": [
+          "What would make your career path and promotion criteria feel clear over the next quarter?",
+          "Which two workload changes would most improve sustainability this sprint?",
+          "Where are priority expectations still misaligned between you and your manager?"
+        ],
+        "handleCarefully": [
+          "reduced slack activity by 50%+",
+          "workload complaints over 3+ weeks",
+          "promotion passed over without explanation"
+        ],
+        "personalContext": [
+          "Location: San Francisco (HQ)",
+          "Role: Software Engineer, Engineering",
+          "Manager: Michael Rodriguez",
+          "Upcoming leave: Stress Recovery Leave (2026-03-20 to 2026-03-24)"
+        ],
+        "recommendedTone": "calm, empathetic, and action-focused with explicit accountability",
+        "executiveSummary": "Escalated retention concern requires immediate CHRO intervention with concrete commitments."
+      }
+    }
+  },
+  "sentimentHistory": [
+    {
+      "at": "2026-03-13T15:01:07.735Z",
+      "score": 28
+    },
+    {
+      "at": "2026-03-13T15:11:07.735Z",
+      "score": 28
+    },
+    {
+      "at": "2026-03-13T16:21:07.735Z",
+      "score": 61
+    }
+  ],
+  "alerts": [
+    {
+      "kind": "critical_risk",
+      "severity": "critical",
+      "channel": "email+dashboard",
+      "message": "Employee risk reached CRITICAL. Immediate CHRO intervention recommended.",
+      "createdAt": "2026-03-13T15:01:07.735Z",
+      "eventType": "initial_profile_build"
+    },
+    {
+      "kind": "chro_commitment_unresolved",
+      "severity": "medium",
+      "channel": "dashboard",
+      "message": "2 commitment(s) are unresolved before the next check-in.",
+      "createdAt": "2026-03-13T15:01:07.735Z",
+      "eventType": "initial_profile_build"
+    },
+    {
+      "kind": "meeting_brief_ready",
+      "severity": "info",
+      "channel": "dashboard",
+      "message": "Meeting starts in under 2 hours. Brief is ready.",
+      "createdAt": "2026-03-13T15:01:07.735Z",
+      "eventType": "initial_profile_build"
+    },
+    {
+      "kind": "critical_risk",
+      "severity": "critical",
+      "channel": "email+dashboard",
+      "message": "Employee risk reached CRITICAL. Immediate CHRO intervention recommended.",
+      "createdAt": "2026-03-13T15:11:07.735Z",
+      "eventType": "slack_message_debounced_reanalysis"
+    },
+    {
+      "kind": "chro_commitment_unresolved",
+      "severity": "medium",
+      "channel": "dashboard",
+      "message": "2 commitment(s) are unresolved before the next check-in.",
+      "createdAt": "2026-03-13T15:11:07.735Z",
+      "eventType": "slack_message_debounced_reanalysis"
+    },
+    {
+      "kind": "critical_risk",
+      "severity": "critical",
+      "channel": "email+dashboard",
+      "message": "Employee risk reached CRITICAL. Immediate CHRO intervention recommended.",
+      "createdAt": "2026-03-13T16:21:07.735Z",
+      "eventType": "meeting_transcript_priority_reanalysis"
+    },
+    {
+      "kind": "chro_commitment_unresolved",
+      "severity": "medium",
+      "channel": "dashboard",
+      "message": "1 commitment(s) are unresolved before the next check-in.",
+      "createdAt": "2026-03-13T16:21:07.735Z",
+      "eventType": "meeting_transcript_priority_reanalysis"
+    },
+    {
+      "kind": "meeting_brief_ready",
+      "severity": "info",
+      "channel": "dashboard",
+      "message": "Meeting starts in under 2 hours. Brief is ready.",
+      "createdAt": "2026-03-13T16:21:07.735Z",
+      "eventType": "meeting_transcript_priority_reanalysis"
+    }
+  ],
+  "dashboard": {
+    "employees": [
+      {
+        "email": "alex.chen@company.com",
+        "name": "Alex Chen",
+        "role": "Software Engineer",
+        "department": "Engineering",
+        "healthScore": 41,
+        "healthBand": "monitor",
+        "riskLevel": "critical"
+      }
+    ],
+    "alerts": [
+      {
+        "kind": "critical_risk",
+        "severity": "critical",
+        "channel": "email+dashboard",
+        "message": "Employee risk reached CRITICAL. Immediate CHRO intervention recommended.",
+        "createdAt": "2026-03-13T15:01:07.735Z",
+        "eventType": "initial_profile_build"
+      },
+      {
+        "kind": "chro_commitment_unresolved",
+        "severity": "medium",
+        "channel": "dashboard",
+        "message": "2 commitment(s) are unresolved before the next check-in.",
+        "createdAt": "2026-03-13T15:01:07.735Z",
+        "eventType": "initial_profile_build"
+      },
+      {
+        "kind": "meeting_brief_ready",
+        "severity": "info",
+        "channel": "dashboard",
+        "message": "Meeting starts in under 2 hours. Brief is ready.",
+        "createdAt": "2026-03-13T15:01:07.735Z",
+        "eventType": "initial_profile_build"
+      },
+      {
+        "kind": "critical_risk",
+        "severity": "critical",
+        "channel": "email+dashboard",
+        "message": "Employee risk reached CRITICAL. Immediate CHRO intervention recommended.",
+        "createdAt": "2026-03-13T15:11:07.735Z",
+        "eventType": "slack_message_debounced_reanalysis"
+      },
+      {
+        "kind": "chro_commitment_unresolved",
+        "severity": "medium",
+        "channel": "dashboard",
+        "message": "2 commitment(s) are unresolved before the next check-in.",
+        "createdAt": "2026-03-13T15:11:07.735Z",
+        "eventType": "slack_message_debounced_reanalysis"
+      },
+      {
+        "kind": "critical_risk",
+        "severity": "critical",
+        "channel": "email+dashboard",
+        "message": "Employee risk reached CRITICAL. Immediate CHRO intervention recommended.",
+        "createdAt": "2026-03-13T16:21:07.735Z",
+        "eventType": "meeting_transcript_priority_reanalysis"
+      },
+      {
+        "kind": "chro_commitment_unresolved",
+        "severity": "medium",
+        "channel": "dashboard",
+        "message": "1 commitment(s) are unresolved before the next check-in.",
+        "createdAt": "2026-03-13T16:21:07.735Z",
+        "eventType": "meeting_transcript_priority_reanalysis"
+      },
+      {
+        "kind": "meeting_brief_ready",
+        "severity": "info",
+        "channel": "dashboard",
+        "message": "Meeting starts in under 2 hours. Brief is ready.",
+        "createdAt": "2026-03-13T16:21:07.735Z",
+        "eventType": "meeting_transcript_priority_reanalysis"
+      }
+    ],
+    "timelineSummary": [
+      {
+        "eventType": "initial_profile_build",
+        "version": 1,
+        "healthScore": 32,
+        "riskLevel": "critical",
+        "generatedBrief": true,
+        "alertCount": 3
+      },
+      {
+        "eventType": "slack_message_debounced_reanalysis",
+        "version": 2,
+        "healthScore": 32,
+        "riskLevel": "critical",
+        "generatedBrief": true,
+        "alertCount": 2
+      },
+      {
+        "eventType": "meeting_transcript_priority_reanalysis",
+        "version": 3,
+        "healthScore": 41,
+        "riskLevel": "critical",
+        "generatedBrief": true,
+        "alertCount": 3
+      }
+    ]
+  }
+}

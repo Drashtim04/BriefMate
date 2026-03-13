@@ -1,6 +1,7 @@
 const express = require('express');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const cors = require('cors');
 const { loadConfig } = require('./shared/config');
 const { connectMongo, mongoStatus } = require('./db/mongo');
 const apiRoutes = require('./routes');
@@ -23,7 +24,21 @@ connectMongo()
 
 const app = express();
 
+function getCorsOrigins() {
+  const raw = process.env.CORS_ORIGIN || 'http://localhost:5173';
+  return String(raw)
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 app.use(helmet());
+app.use(
+  cors({
+    origin: getCorsOrigins(),
+    credentials: false
+  })
+);
 app.use(express.json({ limit: '2mb' }));
 app.use(morgan('dev'));
 

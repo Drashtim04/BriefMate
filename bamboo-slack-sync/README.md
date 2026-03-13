@@ -41,9 +41,13 @@ pip install requests python-dateutil
 ```bash
 # 1. Fetch from BambooHR
 #    Set your credentials first:
-export BAMBOOHR_SUBDOMAIN=cudept
+export BAMBOOHR_COMPANY=cudept
 export BAMBOOHR_API_KEY=your_key_here
+export BAMBOOHR_API_BASE=https://api.bamboohr.com/api/gateway.php
 python step1_fetch_bamboohr.py
+
+# Or place the same keys in bamboo-slack-sync/.env
+# (step1 also auto-loads backend/.env if present)
 
 # 2. Generate synthetic Slack data
 python step2_generate_slack.py

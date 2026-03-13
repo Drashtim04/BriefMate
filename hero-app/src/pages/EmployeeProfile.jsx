@@ -1,23 +1,79 @@
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Mail, Briefcase, Calendar, User as UserIcon, Activity, AlertTriangle, MessageSquare } from "lucide-react";
+import { getEmployeeProfileByEmail } from "../lib/api";
 
 export function EmployeeProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [employee, setEmployee] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  // Mock employee data based on ID - in reality fetched from API
-  const employee = {
-    id,
-    name: "Elena Rodriguez",
-    email: "elena.r@company.com",
-    dept: "Design",
-    role: "Product Designer",
-    manager: "Sam Taylor",
-    joinDate: "Nov 20, 2022",
-    sentimentScore: "62/100",
-    riskLevel: "High",
-    totalMeetings: 24,
-  };
+  const profileEmail = useMemo(() => {
+    const decoded = decodeURIComponent(String(id || "")).toLowerCase();
+    return decoded.includes("@") ? decoded : "";
+  }, [id]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadProfile() {
+      try {
+        setIsLoading(true);
+        setError("");
+
+        if (!profileEmail) {
+          throw new Error("Invalid employee identifier");
+        }
+
+        const profile = await getEmployeeProfileByEmail(profileEmail);
+        if (!isMounted) return;
+        setEmployee(profile);
+      } catch (err) {
+        if (!isMounted) return;
+        setError(err?.message || "Unable to load employee profile");
+        setEmployee(null);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+
+    loadProfile();
+    return () => {
+      isMounted = false;
+    };
+  }, [profileEmail]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center text-sm text-gray-500 hover:text-[#1f7a6c] transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4 mr-1" /> Back to Employees
+        </button>
+        <div className="bg-white border border-gray-200 rounded-xl p-6 text-sm text-gray-600">Loading profile...</div>
+      </div>
+    );
+  }
+
+  if (!employee) {
+    return (
+      <div className="space-y-6">
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center text-sm text-gray-500 hover:text-[#1f7a6c] transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4 mr-1" /> Back to Employees
+        </button>
+        <div className="bg-white border border-gray-200 rounded-xl p-6 text-sm text-gray-600">
+          {error || "Employee profile not found."}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -27,6 +83,13 @@ export function EmployeeProfile() {
       >
         <ArrowLeft className="w-4 h-4 mr-1" /> Back to Employees
       </button>
+
+      {isLoading && <div className="text-sm text-gray-500">Refreshing employee profile...</div>}
+      {error && (
+        <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 px-4 py-2 rounded-lg">
+          Live profile unavailable: {error}.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Profile Section */}
@@ -67,8 +130,7 @@ export function EmployeeProfile() {
                 <span className="text-sm font-medium text-gray-500">Sentiment Score</span>
                 <Activity className="w-4 h-4 text-[#1f7a6c]" />
               </div>
-              <p className="text-2xl font-bold text-[#1f2937]">{employee.sentimentScore}</p>
-              <p className="text-xs text-red-500 mt-2">-5 pts trailing 30 days</p>
+              <p className="text-2xl font-bold text-[#1f2937]">{employee.sentimentScore || ""}</p>
             </div>
             
             <div className="bg-white p-5 rounded-xl border border-[#f59e0b]/30 shadow-sm relative overflow-hidden">
@@ -77,8 +139,7 @@ export function EmployeeProfile() {
                 <span className="text-sm font-medium text-gray-500">Retention Risk</span>
                 <AlertTriangle className="w-4 h-4 text-[#f59e0b]" />
               </div>
-              <p className="text-2xl font-bold text-[#f59e0b]">{employee.riskLevel}</p>
-              <p className="text-xs text-gray-500 mt-2">Elevated burnout signals</p>
+              <p className="text-2xl font-bold text-[#f59e0b]">{employee.riskLevel || ""}</p>
             </div>
             
             <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
@@ -87,21 +148,23 @@ export function EmployeeProfile() {
                 <MessageSquare className="w-4 h-4 text-gray-400" />
               </div>
               <p className="text-2xl font-bold text-[#1f2937]">{employee.totalMeetings}</p>
-              <p className="text-xs text-[#1f7a6c] mt-2">+3 from last month</p>
             </div>
           </div>
 
           <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm mt-6">
             <h4 className="text-md font-medium text-[#1f2937] mb-4">Latest Platform Observations</h4>
             <div className="space-y-4">
-              <div className="border-l-2 border-[#f59e0b] pl-4 py-1">
-                <p className="text-sm text-gray-800">Elena has expressed frustration with recent project deadlines during her last 2 1:1s.</p>
-                <p className="text-xs text-gray-500 mt-1">Extracted from meeting on Oct 14</p>
-              </div>
-              <div className="border-l-2 border-gray-300 pl-4 py-1">
-                <p className="text-sm text-gray-800">Showed strong interest in migrating to a Team Lead role in Q1.</p>
-                <p className="text-xs text-gray-500 mt-1">Extracted from quarterly review on Sept 30</p>
-              </div>
+              {(employee.observations || []).slice(0, 2).map((item, index) => (
+                <div key={index} className={`border-l-2 pl-4 py-1 ${index === 0 ? "border-[#f59e0b]" : "border-gray-300"}`}>
+                  <p className="text-sm text-gray-800">{item}</p>
+                  <p className="text-xs text-gray-500 mt-1">Generated from integrated intelligence data</p>
+                </div>
+              ))}
+              {(!employee.observations || employee.observations.length === 0) && (
+                <div className="border-l-2 border-gray-300 pl-4 py-1">
+                  <p className="text-sm text-gray-800">No observations available yet.</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

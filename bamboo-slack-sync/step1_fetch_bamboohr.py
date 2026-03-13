@@ -15,17 +15,37 @@ Output:
 import requests
 import json
 import os
-import base64
 from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
 
-# ──────────────────────────────────────────────
-# CONFIG — fill these in
-# ──────────────────────────────────────────────
-BAMBOOHR_SUBDOMAIN = "cudept"          # from your URL: cudept.bamboohr.com
-BAMBOOHR_API_KEY   = "your_api_key"   # from BambooHR → Profile → API Keys
 
-BASE_URL = f"https://api.bamboohr.com/api/gateway.php/{BAMBOOHR_SUBDOMAIN}/v1"
+def load_env_file(path):
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+load_env_file(os.path.join(SCRIPT_DIR, ".env"))
+load_env_file(os.path.join(SCRIPT_DIR, "..", "backend", ".env"))
+
+# ──────────────────────────────────────────────
+# CONFIG — values come from env with sane defaults
+# ──────────────────────────────────────────────
+BAMBOOHR_SUBDOMAIN = os.environ.get("BAMBOOHR_SUBDOMAIN") or os.environ.get("BAMBOOHR_COMPANY") or "cudept"
+BAMBOOHR_API_KEY = os.environ.get("BAMBOOHR_API_KEY", "")
+BAMBOOHR_API_BASE = os.environ.get("BAMBOOHR_API_BASE", "https://api.bamboohr.com/api/gateway.php")
+
+BASE_URL = f"{BAMBOOHR_API_BASE}/{BAMBOOHR_SUBDOMAIN}/v1"
 
 HEADERS = {
     "Accept": "application/json",
@@ -56,6 +76,9 @@ EMPLOYEE_FIELDS = ",".join([
 def fetch_directory():
     """Get all employees from the directory endpoint."""
     print("📡 Fetching employee directory from BambooHR...")
+    if not BAMBOOHR_API_KEY:
+        print("⚠️  BAMBOOHR_API_KEY not set. Falling back to demo data.")
+        return []
     url = f"{BASE_URL}/employees/directory"
     try:
         resp = requests.get(url, auth=AUTH, headers=HEADERS, timeout=10)
