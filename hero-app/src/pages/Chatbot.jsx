@@ -38,13 +38,43 @@ function mapSessionMessagesToUi(rows = []) {
     .filter(Boolean);
 }
 
-function buildChatHistoryFromMessages(rows = []) {
-  return rows
-    .filter((row) => row?.sender === "user" && String(row?.text || "").trim())
+function buildChatHistoryFromMessages(rows = [], sessionId = "") {
+  const key = String(sessionId || "").trim();
+  const latestUserMessage = rows
     .slice()
     .reverse()
-    .map((row, index) => ({ id: `hist-${index}-${String(row.id || "")}`, text: row.text }))
-    .slice(0, 8);
+    .find((row) => row?.sender === "user" && String(row?.text || "").trim());
+
+  if (!key) {
+    return latestUserMessage
+      ? [{ id: `hist-single-${String(latestUserMessage.id || Date.now())}`, sessionId: "", text: latestUserMessage.text }]
+      : [];
+  }
+
+  return [
+    {
+      id: `hist-${key}`,
+      sessionId: key,
+      text: latestUserMessage?.text || "Current chat",
+    },
+  ];
+}
+
+function upsertRecentChat(prev = [], { sessionId = "", text = "" } = {}) {
+  const key = String(sessionId || "").trim();
+  const preview = String(text || "").trim() || "Current chat";
+  if (!key) {
+    return [{ id: `hist-local-${Date.now()}`, sessionId: "", text: preview }];
+  }
+
+  const current = Array.isArray(prev) ? [...prev] : [];
+  const index = current.findIndex((item) => String(item?.sessionId || "").trim() === key);
+  const nextItem = { id: `hist-${key}`, sessionId: key, text: preview };
+
+  if (index >= 0) {
+    current.splice(index, 1);
+  }
+  return [nextItem, ...current].slice(0, 8);
 }
 
 export function Chatbot() {
@@ -98,7 +128,7 @@ export function Chatbot() {
           const restoredMessages = mapSessionMessagesToUi(historyPayload?.data || []);
           if (restoredMessages.length > 0) {
             setMessages(restoredMessages);
-            setChatHistory(buildChatHistoryFromMessages(restoredMessages));
+            setChatHistory(buildChatHistoryFromMessages(restoredMessages, activeSessionId));
           } else if (cachedMessages.length === 0) {
             setMessages(DEFAULT_MESSAGES);
             setChatHistory([]);
@@ -137,11 +167,39 @@ export function Chatbot() {
     }
   }, [messages, chatHistory, sessionId]);
 
-  const SUGGESTED_PROMPTS = [
-    "Show critical employees with health over 30",
-    "Which employees are at high retention risk?",
-    "Summarize latest concerns for niharmehta245@gmail.com",
-    "Who has declining sentiment this week?",
+  const CHRO_TEMPLATE_INPUTS = [
+    {
+      title: "Top Attrition Risk",
+      prompt: "Show me employees with critical retention risk and top reasons.",
+    },
+    {
+      title: "Sentiment Drop Alerts",
+      prompt: "Which employees had the biggest sentiment drop in the last 30 days?",
+    },
+    {
+      title: "Today 1:1 Brief",
+      prompt: "Generate a pre-meeting brief for today's 1:1s with high-risk employees.",
+    },
+    {
+      title: "Open Commitments",
+      prompt: "List unresolved commitments from previous HR check-ins.",
+    },
+    {
+      title: "Manager Conflict Signals",
+      prompt: "Who has repeated signals of manager conflict and what evidence supports it?",
+    },
+    {
+      title: "Recognition Opportunities",
+      prompt: "Which employees are thriving and should be recognized this week?",
+    },
+    {
+      title: "Flight Risk Summary",
+      prompt: "Summarize flight-risk employees by department with urgency levels.",
+    },
+    {
+      title: "Workload Burnout",
+      prompt: "Who is showing sustained workload or burnout concerns over the last 3 weeks?",
+    },
   ];
 
   function formatFilterLabel(value) {
@@ -152,10 +210,43 @@ export function Chatbot() {
       .replace(/^./, (char) => char.toUpperCase());
   }
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
+  function formatFilterValue(value) {
+    if (value === null || value === undefined) return "";
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      return String(value);
+    }
+    if (Array.isArray(value)) {
+      return value.map((item) => String(item)).join(", ");
+    }
+    if (typeof value === "object") {
+      if (typeof value.$regex === "string") {
+        return value.$regex;
+      }
+      return Object.entries(value)
+        .map(([key, item]) => `${key}: ${String(item)}`)
+        .join(", ");
+    }
+    return String(value);
+  }
+
+  const handleSend = async (overrideText) => {
+    const nextInput = typeof overrideText === "string" ? overrideText.trim() : input.trim();
+    if (!nextInput) return;
+    if (nextInput.length < 3) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `bot-${Date.now()}`,
+          sender: "bot",
+          text: "Please enter at least 3 characters so I can process your request.",
+          transcriptCards: [],
+          filters: {},
+          count: 0,
+        },
+      ].slice(-60));
+      return;
+    }
     if (isSending || isHydrating) return;
-    const nextInput = input.trim();
     setIsSending(true);
 
     let activeSessionId = String(sessionId || "").trim();
@@ -183,7 +274,7 @@ export function Chatbot() {
         count: 0,
       },
     ].slice(-60));
-    setChatHistory((prev) => [{ id: Date.now(), text: nextInput }, ...prev].slice(0, 8));
+    setChatHistory((prev) => upsertRecentChat(prev, { sessionId: activeSessionId, text: nextInput }));
     setInput("");
 
     try {
@@ -203,13 +294,26 @@ export function Chatbot() {
         },
       ].slice(-60));
     } catch (err) {
+      const status = Number(err?.status || 0);
+      const message = String(err?.message || "Request could not be completed.");
+      const code = String(err?.code || "").toLowerCase();
+      const isBackendUnavailable =
+        status >= 500 || /unavailable|timeout|upstream|network/.test(code);
+
+      let botText = "I could not process that request right now. Please try again shortly.";
+      if (status === 400) {
+        botText = `Your request needs adjustment: ${message}`;
+      } else if (isBackendUnavailable) {
+        botText =
+          "The intelligence backend is currently unavailable. Please verify backend and LLM services are running, then try again.";
+      }
+
       setMessages((prev) => [
         ...prev,
         {
           id: `bot-${Date.now()}`,
           sender: "bot",
-          text:
-            "The intelligence backend is currently unavailable. Please verify backend and LLM services are running, then try again.",
+          text: botText,
           transcriptCards: [],
           filters: {},
           count: 0,
@@ -221,6 +325,13 @@ export function Chatbot() {
   };
 
   const fillPrompt = (text) => setInput(text);
+
+  const runTemplatePrompt = (text) => {
+    const nextText = String(text || "").trim();
+    if (!nextText || isSending || isHydrating) return;
+    setInput(nextText);
+    handleSend(nextText);
+  };
 
   return (
     <div className="surface-card flex h-[calc(100vh-140px)] rounded-2xl overflow-hidden">
@@ -282,8 +393,8 @@ export function Chatbot() {
                         <Filter className="w-3 h-3 mr-1" /> Applied Filters
                       </div>
                       {Object.entries(msg.filters).map(([key, value]) => (
-                        <span key={`${key}-${String(value)}`} className="inline-flex items-center px-2 py-0.5 rounded-full bg-[#1f7a6c]/10 text-[#165a50] text-[11px] border border-[#1f7a6c]/20">
-                          {formatFilterLabel(key)}: {String(value)}
+                        <span key={`${key}-${formatFilterValue(value)}`} className="inline-flex items-center px-2 py-0.5 rounded-full bg-[#1f7a6c]/10 text-[#165a50] text-[11px] border border-[#1f7a6c]/20">
+                          {formatFilterLabel(key)}: {formatFilterValue(value)}
                         </span>
                       ))}
                     </div>
@@ -337,17 +448,18 @@ export function Chatbot() {
 
         {/* Bottom Panel - Input & Suggestions */}
         <div className="p-4 bg-white border-t border-gray-200">
-          {SUGGESTED_PROMPTS.length > 0 && (
+          {CHRO_TEMPLATE_INPUTS.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-4 justify-center">
-              {SUGGESTED_PROMPTS.map((prompt, i) => (
+              {CHRO_TEMPLATE_INPUTS.map(({ title, prompt }, i) => (
                 <motion.button 
                   key={i} 
-                  className="px-3 py-1.5 text-xs text-[#1f7a6c] bg-[#1f7a6c]/10 hover:bg-[#1f7a6c]/20 rounded-full transition-colors border border-[#1f7a6c]/20"
-                  onClick={() => fillPrompt(prompt)}
+                  className="px-3 py-2 text-left text-xs text-[#1f7a6c] bg-[#1f7a6c]/10 hover:bg-[#1f7a6c]/20 rounded-full transition-colors border border-[#1f7a6c]/20"
+                  onClick={() => runTemplatePrompt(prompt)}
                   whileHover={{ y: -1, scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                 >
-                  {prompt}
+                  <span className="block font-semibold leading-none">{title}</span>
+                  <span className="block text-[10px] text-[#165a50]/80 mt-0.5 leading-tight">{prompt}</span>
                 </motion.button>
               ))}
             </div>

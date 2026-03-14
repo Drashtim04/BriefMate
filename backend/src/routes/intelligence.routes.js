@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const { connectMongo } = require('../db/mongo');
 const { getOrgId } = require('../shared/org');
 const { readTokens } = require('../shared/googleTokenStore');
@@ -16,7 +17,7 @@ function getLlmBaseUrl() {
 }
 
 function getTimeoutMs() {
-  const raw = Number.parseInt(String(process.env.LLM_PROXY_TIMEOUT_MS || '30000'), 10);
+  const raw = Number.parseInt(String(process.env.LLM_PROXY_TIMEOUT_MS || '120000'), 10);
   if (!Number.isFinite(raw) || raw < 1000) return 30000;
   return Math.min(raw, 120000);
 }
@@ -51,6 +52,94 @@ function toMillis(value) {
 
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+function clampHistoryLimit(value) {
+  const parsed = Number.parseInt(String(value), 10);
+  if (!Number.isFinite(parsed)) {
+    return 30;
+  }
+  return Math.max(1, Math.min(parsed, 180));
+}
+
+function byAnalyzedAtAsc(a, b) {
+  return toMillis(a?.analyzedAt) - toMillis(b?.analyzedAt);
+}
+
+function getNumericScore(row, preferredKey) {
+  const candidates = [
+    row?.[preferredKey],
+    row?.score,
+    row?.value,
+    row?.metricValue,
+    row?.[`${preferredKey}Score`],
+  ];
+
+  for (const candidate of candidates) {
+    const numeric = Number(candidate);
+    if (Number.isFinite(numeric)) {
+      return numeric;
+    }
+  }
+
+  return 0;
+}
+
+function buildHistorySummary(sentimentRows, riskRows) {
+  const safeSentiment = Array.isArray(sentimentRows) ? [...sentimentRows].sort(byAnalyzedAtAsc) : [];
+  const safeRisk = Array.isArray(riskRows) ? [...riskRows].sort(byAnalyzedAtAsc) : [];
+
+  const firstSentiment = safeSentiment.length ? getNumericScore(safeSentiment[0], 'sentiment') : 0;
+  const lastSentiment = safeSentiment.length ? getNumericScore(safeSentiment[safeSentiment.length - 1], 'sentiment') : 0;
+  const firstRisk = safeRisk.length ? getNumericScore(safeRisk[0], 'risk') : 0;
+  const lastRisk = safeRisk.length ? getNumericScore(safeRisk[safeRisk.length - 1], 'risk') : 0;
+
+  return {
+    latestSentimentScore: lastSentiment,
+    latestRiskScore: lastRisk,
+    sentimentDelta: safeSentiment.length > 1 ? lastSentiment - firstSentiment : 0,
+    riskDelta: safeRisk.length > 1 ? lastRisk - firstRisk : 0,
+  };
+}
+
+async function loadEmployeeHistoryFromMongo({ employeeEmail, limit }) {
+  const connection = await connectMongo();
+  if (!connection?.connected) {
+    return null;
+  }
+
+  const db = mongoose?.connection?.db;
+  if (!db) {
+    return null;
+  }
+
+  const normalizedEmail = normalizeEmail(employeeEmail);
+  const safeLimit = clampHistoryLimit(limit);
+
+  const sentimentRows = await db
+    .collection('sentiment_history')
+    .find({ employeeEmail: normalizedEmail })
+    .sort({ analyzedAt: -1 })
+    .limit(safeLimit)
+    .toArray();
+
+  const riskRows = await db
+    .collection('risk_history')
+    .find({ employeeEmail: normalizedEmail })
+    .sort({ analyzedAt: -1 })
+    .limit(safeLimit)
+    .toArray();
+
+  const sentimentHistory = [...sentimentRows].reverse().sort(byAnalyzedAtAsc);
+  const riskHistory = [...riskRows].reverse().sort(byAnalyzedAtAsc);
+
+  return {
+    employeeEmail: normalizedEmail,
+    limit: safeLimit,
+    sentimentHistory,
+    riskHistory,
+    summary: buildHistorySummary(sentimentHistory, riskHistory),
+  };
 }
 
 function collectAttendeeEmails(calendarDoc) {
@@ -180,6 +269,7 @@ function mapFirefliesDocToMeeting(meetingDoc) {
     employeeEmail,
     participants,
     summary: String(meetingDoc?.summary || '').trim(),
+    hrInvolved: meetingDoc?.hrInvolved !== false,
     source: 'fireflies',
   };
 }
@@ -324,14 +414,14 @@ async function listCalendarMeetings({ orgId, employeeEmail, query, fetchLimit = 
     });
 }
 
-async function listFirefliesMeetings({ orgId, employeeEmail, query, fetchLimit = 400 }) {
+async function listFirefliesMeetings({ orgId, employeeEmail, query, fetchLimit = 400, includeNonHr = false }) {
   const connection = await connectMongo();
   if (!connection?.connected) {
     return [];
   }
 
   const docs = await Meeting.find(
-    { orgId },
+    includeNonHr ? { orgId } : { orgId, hrInvolved: { $ne: false } },
     {
       meetingId: 1,
       title: 1,
@@ -339,6 +429,7 @@ async function listFirefliesMeetings({ orgId, employeeEmail, query, fetchLimit =
       employeeEmail: 1,
       participants: 1,
       summary: 1,
+      hrInvolved: 1,
     }
   )
     .sort({ meetingAt: -1 })
@@ -467,7 +558,7 @@ async function ingestGoogleCalendarEvents({ orgId, calendarId, pastDays, futureD
   };
 }
 
-async function getMergedMeetings({ orgId, employeeEmail, query, limit }) {
+async function getMergedMeetings({ orgId, employeeEmail, query, limit, includeNonHr = false }) {
   const safeLimit = Number.isFinite(Number(limit)) ? Math.max(1, Math.min(Number(limit), 500)) : 20;
 
   const params = new URLSearchParams();
@@ -492,6 +583,7 @@ async function getMergedMeetings({ orgId, employeeEmail, query, limit }) {
     employeeEmail,
     query,
     fetchLimit: Math.max(200, safeLimit * 8),
+    includeNonHr,
   });
 
   const merged = mergeMeetings([...llmRows, ...calendarRows, ...firefliesRows]).slice(0, safeLimit);
@@ -629,10 +721,80 @@ router.get('/employees/:email/profile', async (req, res, next) => {
   await proxyJson({ req, res, next, method: 'GET', targetPath: `/employees/${email}/profile` });
 });
 
+router.get('/employees/:email/history', async (req, res, next) => {
+  const normalizedEmail = normalizeEmail(req.params.email);
+  const encodedEmail = encodeURIComponent(normalizedEmail);
+  const safeLimit = clampHistoryLimit(req.query.limit);
+
+  const base = getLlmBaseUrl();
+  const timeoutMs = getTimeoutMs();
+  const targetUrl = `${base}/employees/${encodedEmail}/history?limit=${safeLimit}`;
+
+  let upstreamStatus;
+  let upstreamError;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const upstream = await fetch(targetUrl, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+    });
+
+    upstreamStatus = upstream.status;
+    const text = await upstream.text();
+
+    if (!upstream.ok) {
+      upstreamError = `Upstream returned non-OK status ${upstream.status}`;
+    } else {
+      try {
+        const json = text ? JSON.parse(text) : {};
+        return res.json(json);
+      } catch (_parseErr) {
+        upstreamError = 'Upstream history response was not valid JSON';
+      }
+    }
+  } catch (err) {
+    upstreamError =
+      err?.name === 'AbortError'
+        ? `Upstream history request timed out after ${timeoutMs}ms`
+        : (err?.message || 'Failed to reach upstream history endpoint');
+  } finally {
+    clearTimeout(timer);
+  }
+
+  try {
+    const fallback = await loadEmployeeHistoryFromMongo({
+      employeeEmail: normalizedEmail,
+      limit: safeLimit,
+    });
+
+    if (fallback) {
+      return res.json(fallback);
+    }
+
+    return res.status(502).json({
+      ok: false,
+      error: {
+        message: `Unable to load employee history from upstream or Mongo fallback. ${upstreamError || ''}`.trim(),
+        code: 'EMPLOYEE_HISTORY_UNAVAILABLE',
+        upstreamStatus: upstreamStatus || null,
+      },
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 router.get('/meetings', async (req, res, next) => {
   try {
     const employeeEmail = req.query.employeeEmail ? String(req.query.employeeEmail) : '';
     const query = req.query.q ? String(req.query.q) : '';
+    const includeNonHr = String(req.query.includeNonHr || '').trim().toLowerCase() === 'true';
     const requestedLimit = Number(req.query.limit || 20);
     const orgId = getOrgId(req);
     const { upstream, llmRows, calendarRows, firefliesRows, merged } = await getMergedMeetings({
@@ -640,6 +802,7 @@ router.get('/meetings', async (req, res, next) => {
       employeeEmail,
       query,
       limit: requestedLimit,
+      includeNonHr,
     });
 
     return res.json({
@@ -679,6 +842,7 @@ router.post('/meetings/refresh-google', async (req, res, next) => {
 
     const employeeEmail = req.body?.employeeEmail ? String(req.body.employeeEmail) : '';
     const query = req.body?.q ? String(req.body.q) : '';
+    const includeNonHr = String(req.body?.includeNonHr ?? req.query.includeNonHr ?? '').trim().toLowerCase() === 'true';
     const requestedLimit = Number(req.body?.limit || req.query.limit || 20);
 
     const { upstream, llmRows, calendarRows, firefliesRows, merged } = await getMergedMeetings({
@@ -686,6 +850,7 @@ router.post('/meetings/refresh-google', async (req, res, next) => {
       employeeEmail,
       query,
       limit: requestedLimit,
+      includeNonHr,
     });
 
     return res.json({

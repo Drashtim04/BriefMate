@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { listEmployees, refreshEmployeePipeline, syncBambooHrEmployees } from "../lib/api";
+import { listEmployees, refreshEmployeePipeline, syncBambooHrEmployees, syncLatestSignals } from "../lib/api";
 
 const REFRESH_POLL_INTERVAL_MS = 2500;
 const REFRESH_POLL_MAX_ATTEMPTS = 12;
@@ -22,7 +22,8 @@ function buildRefreshFingerprint(person) {
     String(person?.totalMeetings || 0),
     String(person?.risk || ""),
     String(person?.sentiment || ""),
-    String(Math.round(Number(person?.score || 0))),
+    String(Math.round(Number(person?.sentimentScoreRaw || 0))),
+    String(Math.round(Number(person?.healthScore || 0))),
   ].join("|");
 }
 
@@ -48,6 +49,7 @@ export function Employees() {
   const [refreshingByEmail, setRefreshingByEmail] = useState({});
   const [refreshStatusByEmail, setRefreshStatusByEmail] = useState({});
   const [isBulkSyncing, setIsBulkSyncing] = useState(false);
+  const [isSignalSyncing, setIsSignalSyncing] = useState(false);
 
   const loadEmployees = useCallback(async ({ withLoader = true } = {}) => {
     try {
@@ -170,6 +172,36 @@ export function Employees() {
     }
   }
 
+  async function handleSyncLatestSignals() {
+    if (isSignalSyncing) {
+      return;
+    }
+
+    setError("");
+    setRefreshNotice("Syncing latest Slack users and meeting transcripts...");
+    setIsSignalSyncing(true);
+
+    try {
+      const result = await syncLatestSignals({ runPipeline: true, transcriptLimit: 25 });
+      const transcriptsSeen = Number(result?.fireflies?.transcriptsSeen || 0);
+      const slackMessagesSeen = Number(result?.slackMessages?.messagesSeen || 0);
+      const slackChannelsProcessed = Number(result?.slackMessages?.channelsProcessed || 0);
+      const accepted = Number(result?.pipeline?.acceptedCount || 0);
+      const total = Number(result?.pipeline?.totalCandidates || 0);
+      const warningCount = Array.isArray(result?.warnings) ? result.warnings.length : 0;
+
+      setRefreshNotice(
+        `Latest signals synced: transcripts ${transcriptsSeen}, Slack messages ${slackMessagesSeen} across ${slackChannelsProcessed} channels, pipeline ${accepted}/${total}, warnings ${warningCount}.`
+      );
+
+      await loadEmployees({ withLoader: false });
+    } catch (err) {
+      setError(err?.message || "Unable to sync latest Slack and meeting signals");
+    } finally {
+      setIsSignalSyncing(false);
+    }
+  }
+
   const filteredEmployees = employees.filter((emp) => {
     const term = search.toLowerCase();
     return (
@@ -198,6 +230,16 @@ export function Employees() {
           >
             <RefreshCw className={`w-4 h-4 ${isBulkSyncing ? "animate-spin" : ""}`} />
             {isBulkSyncing ? "Syncing BambooHR..." : "Sync BambooHR"}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSyncLatestSignals}
+            disabled={isSignalSyncing}
+            className="inline-flex items-center gap-2 rounded-md border border-[#1f7a6c]/30 px-3 py-2 text-sm font-medium text-[#1f7a6c] hover:bg-[#1f7a6c]/10 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className={`w-4 h-4 ${isSignalSyncing ? "animate-spin" : ""}`} />
+            {isSignalSyncing ? "Syncing Latest Slack + Meetings..." : "Sync Latest Slack + Meetings"}
           </button>
 
           <div className="relative w-full sm:w-72">
@@ -250,7 +292,7 @@ export function Employees() {
                 >
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      <div className="flex-shrink-0 h-10 w-10 rounded-full bg-[#1f7a6c]/10 flex items-center justify-center text-[#1f7a6c] font-medium text-sm">
+                      <div className="shrink-0 h-10 w-10 rounded-full bg-[#1f7a6c]/10 flex items-center justify-center text-[#1f7a6c] font-medium text-sm">
                         {person.name.split(" ").map((n) => n[0]).join("")}
                       </div>
                       <div className="ml-4">
@@ -268,7 +310,10 @@ export function Employees() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{person.lastMeeting}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{person.totalMeetings}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {Number.isFinite(Number(person.score)) ? `${Math.round(Number(person.score))}/100` : "--"}
+                    <div>{Number.isFinite(Number(person.sentimentScoreRaw)) ? `${Math.round(Number(person.sentimentScoreRaw))}/100` : "--"}</div>
+                    <div className="text-xs text-gray-400">
+                      Health: {Number.isFinite(Number(person.healthScore)) ? `${Math.round(Number(person.healthScore))}/100` : "--"}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-medium rounded-full ${

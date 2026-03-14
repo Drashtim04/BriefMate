@@ -125,34 +125,138 @@ ${JSON.stringify(context)}
 `.trim();
 }
 
-function normalizeResult(raw) {
-  const parsed = JSON.parse(raw);
+function defaultRetentionFallback() {
   return {
-    riskScore: Math.max(0, Math.min(100, Number(parsed.riskScore || 0))),
-    riskLevel: ["low", "medium", "high", "critical"].includes(parsed.riskLevel) ? parsed.riskLevel : "low",
-    signals: Array.isArray(parsed.signals) ? parsed.signals : [],
-    summary: parsed.summary || "No summary",
-    analyzedAt: new Date().toISOString()
+    riskScore: 15,
+    riskLevel: "low",
+    signals: [],
+    summary: "Fallback retention analysis used due to model parsing error.",
+    criticalCount: 0,
+    highCount: 0,
+    mediumCount: 0,
+    signalStrength: {
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+    },
+    schemaValid: false,
+    fallbackUsed: true,
+    analyzedAt: new Date().toISOString(),
+  };
+}
+
+function safeParseJson(raw) {
+  if (raw && typeof raw === "object") {
+    return raw;
+  }
+
+  const text = String(raw || "").trim();
+  if (!text) {
+    throw new Error("Empty JSON payload");
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    const first = text.indexOf("{");
+    const last = text.lastIndexOf("}");
+    if (first >= 0 && last > first) {
+      return JSON.parse(text.slice(first, last + 1));
+    }
+    throw new Error("Invalid JSON payload");
+  }
+}
+
+function deriveSignalStrength(signals = []) {
+  const strength = {
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+  };
+
+  if (!Array.isArray(signals)) {
+    return strength;
+  }
+
+  signals.forEach((item) => {
+    const tier = String(item?.tier || "low").toLowerCase();
+    if (strength[tier] !== undefined) {
+      strength[tier] += 1;
+    }
+  });
+
+  return strength;
+}
+
+function normalizeSignal(signal) {
+  return {
+    tier: ["critical", "high", "medium", "low"].includes(signal?.tier) ? signal.tier : "low",
+    signal: String(signal?.signal || "").trim(),
+    evidence: String(signal?.evidence || "").trim(),
+    source: ["slack", "transcript", "hrms"].includes(signal?.source) ? signal.source : "slack",
+    confidence: Math.max(0, Math.min(1, Number(signal?.confidence || 0))),
+  };
+}
+
+function resolveRiskLevel(score, modelLevel) {
+  if (["low", "medium", "high", "critical"].includes(modelLevel)) {
+    return modelLevel;
+  }
+  if (score >= 76) return "critical";
+  if (score >= 51) return "high";
+  if (score >= 26) return "medium";
+  return "low";
+}
+
+function normalizeResult(raw) {
+  const parsed = safeParseJson(raw);
+  const signals = Array.isArray(parsed.signals) ? parsed.signals.map(normalizeSignal) : [];
+  const signalStrength = deriveSignalStrength(signals);
+  const score = Math.max(0, Math.min(100, Number(parsed.riskScore || 0)));
+  const schemaValid =
+    Number.isFinite(Number(parsed.riskScore)) &&
+    ["low", "medium", "high", "critical"].includes(parsed.riskLevel) &&
+    Array.isArray(parsed.signals) &&
+    typeof parsed.summary === "string";
+
+  return {
+    riskScore: score,
+    riskLevel: resolveRiskLevel(score, parsed.riskLevel),
+    signals,
+    summary: String(parsed.summary || "No summary"),
+    criticalCount: signalStrength.critical,
+    highCount: signalStrength.high,
+    mediumCount: signalStrength.medium,
+    signalStrength,
+    schemaValid,
+    fallbackUsed: false,
+    analyzedAt: new Date().toISOString(),
   };
 }
 
 async function analyzeRetentionRiskWithLLM({ hrms, meet, slack }) {
-  const groq = getGroqClient();
-  const context = buildUnifiedContext({ hrms, meet, slack });
-  const prompt = buildPrompt(context);
+  try {
+    const groq = getGroqClient();
+    const context = buildUnifiedContext({ hrms, meet, slack });
+    const prompt = buildPrompt(context);
 
-  const response = await groq.chat.completions.create({
-    model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
-    temperature: 0,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: "You produce deterministic HR analysis JSON." },
-      { role: "user", content: prompt }
-    ]
-  });
+    const response = await groq.chat.completions.create({
+      model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: "You produce deterministic HR analysis JSON." },
+        { role: "user", content: prompt }
+      ]
+    });
 
-  const content = response.choices?.[0]?.message?.content || "{}";
-  return normalizeResult(content);
+    const content = response.choices?.[0]?.message?.content || "{}";
+    return normalizeResult(content);
+  } catch {
+    return defaultRetentionFallback();
+  }
 }
 
 export {

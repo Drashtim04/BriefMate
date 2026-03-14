@@ -4,8 +4,6 @@ const memory = {
   employees: [],
   rawData: [],
   profiles: [],
-  sentimentHistory: [],
-  riskHistory: [],
   alerts: [],
   syncState: [],
   meetings: [],
@@ -36,10 +34,6 @@ async function initMongo({ mongoUri, mongoDbName, useMemoryStore }) {
     }
   );
   await mongoDb.collection("employee_raw_data").createIndex({ employeeEmail: 1, fetchedAt: -1 });
-  await mongoDb.collection("sentiment_history").createIndex({ employeeEmail: 1, analyzedAt: -1 });
-  await mongoDb.collection("sentiment_history").createIndex({ employeeEmail: 1, profileVersion: -1 });
-  await mongoDb.collection("risk_history").createIndex({ employeeEmail: 1, analyzedAt: -1 });
-  await mongoDb.collection("risk_history").createIndex({ employeeEmail: 1, profileVersion: -1 });
   await mongoDb.collection("sync_state").createIndex(
     { employeeEmail: 1 },
     {
@@ -86,24 +80,6 @@ function isMongoReady() {
   return Boolean(mongoDb);
 }
 
-function byAnalyzedAtDesc(a, b) {
-  const left = new Date(a?.analyzedAt || 0).getTime();
-  const right = new Date(b?.analyzedAt || 0).getTime();
-  return right - left;
-}
-
-function parseHistoryLimit(limit = 30) {
-  const parsed = Number.parseInt(String(limit), 10);
-  if (!Number.isFinite(parsed)) {
-    return 30;
-  }
-  return Math.max(1, Math.min(parsed, 180));
-}
-
-function isMissingIdentityValue(value) { const normalized = String(value || "").trim().toLowerCase(); return !normalized || normalized === "unknown" || normalized === "n/a" || normalized === "na"; }
-
-function pickIdentityValue(incoming, existing, fallback = "Unknown") { if (!isMissingIdentityValue(incoming)) return String(incoming).trim(); if (!isMissingIdentityValue(existing)) return String(existing).trim(); return fallback; }
-
 async function getLatestProfile(employeeEmail) {
   if (!employeeEmail) {
     return null;
@@ -128,64 +104,25 @@ async function upsertEmployeeIdentity(identityDoc) {
   }
 
   const employeeEmail = String(identityDoc.employeeEmail).toLowerCase();
-  const incomingIdentity = {
-    employeeId: identityDoc.employeeId || identityDoc.id,
-    displayName: identityDoc.displayName || identityDoc.fullName || identityDoc.name,
-    role: identityDoc.role || identityDoc.title || identityDoc.jobTitle,
-    department: identityDoc.department || identityDoc.dept,
-    source: identityDoc.source,
+  const base = {
+    employeeEmail,
+    employeeId: identityDoc.employeeId || null,
+    displayName: identityDoc.displayName || "Unknown",
+    role: identityDoc.role || "Unknown",
+    department: identityDoc.department || "Unknown",
+    source: identityDoc.source || "unknown",
+    updatedAt: new Date().toISOString(),
   };
 
   if (!isMongoReady()) {
     const index = memory.employees.findIndex((item) => item.employeeEmail === employeeEmail);
-    const existing = index >= 0 ? memory.employees[index] : null;
-
-    const base = {
-      employeeEmail,
-      employeeId: !isMissingIdentityValue(incomingIdentity.employeeId)
-        ? String(incomingIdentity.employeeId).trim()
-        : !isMissingIdentityValue(existing?.employeeId)
-          ? String(existing.employeeId).trim()
-          : null,
-      displayName: pickIdentityValue(incomingIdentity.displayName, existing?.displayName, "Unknown"),
-      role: pickIdentityValue(incomingIdentity.role, existing?.role, "Unknown"),
-      department: pickIdentityValue(incomingIdentity.department, existing?.department, "Unknown"),
-      source: !isMissingIdentityValue(incomingIdentity.source)
-        ? String(incomingIdentity.source).trim()
-        : !isMissingIdentityValue(existing?.source)
-          ? String(existing.source).trim()
-          : "unknown",
-      updatedAt: new Date().toISOString(),
-    };
-
     if (index >= 0) {
       memory.employees[index] = { ...memory.employees[index], ...base };
       return memory.employees[index];
     }
-
     memory.employees.push(base);
     return base;
   }
-
-  const existing = await mongoDb.collection("employees").findOne({ employeeEmail });
-
-  const base = {
-    employeeEmail,
-    employeeId: !isMissingIdentityValue(incomingIdentity.employeeId)
-      ? String(incomingIdentity.employeeId).trim()
-      : !isMissingIdentityValue(existing?.employeeId)
-        ? String(existing.employeeId).trim()
-        : null,
-    displayName: pickIdentityValue(incomingIdentity.displayName, existing?.displayName, "Unknown"),
-    role: pickIdentityValue(incomingIdentity.role, existing?.role, "Unknown"),
-    department: pickIdentityValue(incomingIdentity.department, existing?.department, "Unknown"),
-    source: !isMissingIdentityValue(incomingIdentity.source)
-      ? String(incomingIdentity.source).trim()
-      : !isMissingIdentityValue(existing?.source)
-        ? String(existing.source).trim()
-        : "unknown",
-    updatedAt: new Date().toISOString(),
-  };
 
   await mongoDb.collection("employees").updateOne(
     { employeeEmail },
@@ -495,14 +432,12 @@ async function listChatMessages(sessionId, { limit = 100 } = {}) {
       .slice(-safeLimit);
   }
 
-  const rows = await mongoDb
+  return mongoDb
     .collection("chat_messages")
     .find({ sessionId: key })
-    .sort({ messageIndex: -1 })
+    .sort({ messageIndex: 1 })
     .limit(safeLimit)
     .toArray();
-
-  return rows.reverse();
 }
 
 async function getNextProfileVersion(employeeEmail) {
@@ -544,86 +479,6 @@ async function saveRawDataSnapshot(rawDoc) {
 
   await mongoDb.collection("employee_raw_data").insertOne(rawDoc);
   return rawDoc;
-}
-
-async function saveSentimentHistory(doc) {
-  if (!doc?.employeeEmail) {
-    return null;
-  }
-
-  if (!isMongoReady()) {
-    memory.sentimentHistory.push(doc);
-    return doc;
-  }
-
-  await mongoDb.collection("sentiment_history").insertOne(doc);
-  return doc;
-}
-
-async function saveRiskHistory(doc) {
-  if (!doc?.employeeEmail) {
-    return null;
-  }
-
-  if (!isMongoReady()) {
-    memory.riskHistory.push(doc);
-    return doc;
-  }
-
-  await mongoDb.collection("risk_history").insertOne(doc);
-  return doc;
-}
-
-async function listSentimentHistory(employeeEmail, { limit = 30 } = {}) {
-  const email = String(employeeEmail || "").toLowerCase();
-  if (!email) {
-    return [];
-  }
-
-  const safeLimit = parseHistoryLimit(limit);
-
-  if (!isMongoReady()) {
-    return memory.sentimentHistory
-      .filter((item) => String(item?.employeeEmail || "").toLowerCase() === email)
-      .sort(byAnalyzedAtDesc)
-      .slice(0, safeLimit)
-      .reverse();
-  }
-
-  const rows = await mongoDb
-    .collection("sentiment_history")
-    .find({ employeeEmail: email })
-    .sort({ analyzedAt: -1 })
-    .limit(safeLimit)
-    .toArray();
-
-  return rows.reverse();
-}
-
-async function listRiskHistory(employeeEmail, { limit = 30 } = {}) {
-  const email = String(employeeEmail || "").toLowerCase();
-  if (!email) {
-    return [];
-  }
-
-  const safeLimit = parseHistoryLimit(limit);
-
-  if (!isMongoReady()) {
-    return memory.riskHistory
-      .filter((item) => String(item?.employeeEmail || "").toLowerCase() === email)
-      .sort(byAnalyzedAtDesc)
-      .slice(0, safeLimit)
-      .reverse();
-  }
-
-  const rows = await mongoDb
-    .collection("risk_history")
-    .find({ employeeEmail: email })
-    .sort({ analyzedAt: -1 })
-    .limit(safeLimit)
-    .toArray();
-
-  return rows.reverse();
 }
 
 async function saveMeetingRecord(meetingDoc) {
@@ -1410,14 +1265,6 @@ async function getDashboardSummary() {
   const rows = await queryProfiles({ limit: 250 });
   const latestRows = dedupeLatestProfiles(rows);
 
-  const numericMean = (values = []) => {
-    const numeric = values.filter((value) => Number.isFinite(Number(value))).map((value) => Number(value));
-    if (!numeric.length) {
-      return 0;
-    }
-    return Number((numeric.reduce((sum, value) => sum + value, 0) / numeric.length).toFixed(2));
-  };
-
   const todayMeetings = latestRows
     .map((item) => item?.analysis?.brief?.meetingAt)
     .filter(Boolean)
@@ -1433,15 +1280,6 @@ async function getDashboardSummary() {
 
   const totalEmployees = latestRows.length;
   const atRiskEmployees = counts.high + counts.critical;
-  const averageHealthScore = numericMean(latestRows.map((row) => row?.analysis?.health?.score));
-  const averageRiskScore = numericMean(latestRows.map((row) => row?.analysis?.retentionRisk?.score));
-  const averageConfidence = numericMean(latestRows.map((row) => row?.analysis?.components?.confidence));
-  const risingRiskEmployees = latestRows.filter(
-    (row) => Number(row?.analysis?.temporal?.deltaRisk30d) >= 15
-  ).length;
-  const fallingSentimentEmployees = latestRows.filter(
-    (row) => Number(row?.analysis?.temporal?.deltaSentiment7d) <= -20
-  ).length;
 
   return {
     employees: latestRows.map((row) => ({
@@ -1449,12 +1287,6 @@ async function getDashboardSummary() {
       name: row.employeeName,
       sentimentScore: row?.analysis?.sentiment?.score,
       healthScore: row?.analysis?.health?.score,
-      riskScore: row?.analysis?.retentionRisk?.score,
-      sentimentSmoothed: row?.analysis?.components?.sentimentSmoothed,
-      confidence: row?.analysis?.components?.confidence,
-      deltaRisk30d: row?.analysis?.temporal?.deltaRisk30d,
-      deltaSentiment7d: row?.analysis?.temporal?.deltaSentiment7d,
-      scoringVersion: row?.analysis?.scoringVersion,
       riskLevel: row?.analysis?.retentionRisk?.level,
       sentimentTrend: row?.analysis?.sentiment?.trend,
     })),
@@ -1464,11 +1296,6 @@ async function getDashboardSummary() {
     highRiskCount: atRiskEmployees,
     riskCounts: counts,
     meetingsThisWeek: todayMeetings.length,
-    averageHealthScore,
-    averageRiskScore,
-    averageConfidence,
-    risingRiskEmployees,
-    fallingSentimentEmployees,
     todayMeetings,
     generatedAt: new Date().toISOString(),
   };
@@ -1491,10 +1318,6 @@ export {
   saveProfile,
   saveAlerts,
   saveRawDataSnapshot,
-  saveSentimentHistory,
-  saveRiskHistory,
-  listSentimentHistory,
-  listRiskHistory,
   saveMeetingRecord,
   upsertSlackMessagesBatch,
   getDatabaseMeetingSource,

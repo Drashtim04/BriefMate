@@ -171,6 +171,10 @@ async function fetchSlackLive({ employeeEmail = null, slackCursor = 0 } = {}) {
     ? members.filter((member) => member.email === normalizedTargetEmail)
     : members.filter((member) => member.email);
 
+  if (normalizedTargetEmail && selectedMembers.length === 0) {
+    return createEmptySlackPayload();
+  }
+
   const allowedUserIds = new Set(selectedMembers.map((member) => member.userId));
   const memberByUserId = new Map(selectedMembers.map((member) => [member.userId, member]));
   const userNameById = new Map(members.map((member) => [member.userId, member.realName || member.displayName || member.name || `@${member.userId}`]));
@@ -389,7 +393,7 @@ async function fetchSlackMock(dataRoot, employeeEmail) {
     : null;
 
   if (!member) {
-    return payload;
+    return createEmptySlackPayload();
   }
 
   const copy = { ...payload };
@@ -626,10 +630,12 @@ function extractIdentityCandidates({ hrms, slack }) {
       employeeId: row?.id || null,
       displayName:
         row?.displayName ||
-        [row?.firstName, row?.lastName].filter(Boolean).join(" ") ||
+        row?.fullName ||
+        row?.name ||
+        [row?.firstName, row?.lastName].join(" ") ||
         "Unknown",
-      role: row?.role || row?.title || "Unknown",
-      department: row?.department || "Unknown",
+      role: row?.role || row?.title || row?.jobTitle || "Unknown",
+      department: row?.department || row?.dept || "Unknown",
       source: "bamboohr",
       hasSlackMember: slackEmails.has(employeeEmail),
     });

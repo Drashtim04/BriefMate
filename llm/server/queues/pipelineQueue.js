@@ -10,11 +10,14 @@ import {
   briefService,
   comprehensiveSummaryService,
 } from "../services/analysis/groqServices.js";
+import { computeDeterministicScoring } from "../services/analysis/scoringEngine.js";
 import {
   getNextProfileVersion,
   getLatestProfile,
   saveProfile,
   saveAlerts,
+  saveSentimentHistory,
+  saveRiskHistory,
   saveRawDataSnapshot,
   getDashboardSummary,
   upsertEmployeeIdentity,
@@ -37,7 +40,23 @@ let analysisWorker = null;
 let queueMode = "inline";
 const debounceTimers = new Map();
 
-function createAlerts(profile, previousProfile, reason) {
+function getScoringMode() {
+  const raw = String(process.env.SCORING_MODE || "hybrid").toLowerCase();
+  if (["legacy", "shadow", "hybrid"].includes(raw)) {
+    return raw;
+  }
+  return "hybrid";
+}
+
+function riskLevelFromScore(score) {
+  const value = Number(score || 0);
+  if (value >= 76) return "critical";
+  if (value >= 51) return "high";
+  if (value >= 26) return "medium";
+  return "low";
+}
+
+function createAlerts(profile, previousProfile, reason, extractionMeta = {}) {
   const alerts = [];
   const now = new Date().toISOString();
 
@@ -78,6 +97,17 @@ function createAlerts(profile, previousProfile, reason) {
     });
   }
 
+  if (extractionMeta.sentimentFallbackUsed || extractionMeta.retentionFallbackUsed) {
+    alerts.push({
+      employeeEmail: profile.employeeEmail,
+      severity: "medium",
+      kind: "extraction_fallback",
+      message: "Model extraction fallback used for latest analysis.",
+      reason,
+      createdAt: now,
+    });
+  }
+
   return alerts;
 }
 
@@ -109,16 +139,198 @@ function buildMeetingRecord({ profile, rawSources, summary }) {
   };
 }
 
-function hasDeltaData(rawSources) {
-  const slackCount = Object.values(rawSources?.slack || {}).reduce((acc, value) => {
+function countSlackDeltaMessages(slack = {}) {
+  return Object.values(slack).reduce((acc, value) => {
     if (!Array.isArray(value)) {
       return acc;
     }
-    return acc + value.length;
-  }, 0);
 
-  const meetingCount = Array.isArray(rawSources?.meet?.transcript) ? rawSources.meet.transcript.length : 0;
+    return (
+      acc +
+      value.reduce((innerAcc, item) => {
+        const text = String(item?.text || "").trim();
+        return innerAcc + (text ? 1 : 0);
+      }, 0)
+    );
+  }, 0);
+}
+
+function hasDeltaData(rawSources) {
+  const slackCount = countSlackDeltaMessages(rawSources?.slack || {});
+
+  const meetingCount = Array.isArray(rawSources?.meet?.transcript)
+    ? rawSources.meet.transcript.reduce((acc, item) => {
+      const text = String(item?.text || item?.message || "").trim();
+      return acc + (text ? 1 : 0);
+    }, 0)
+    : 0;
   return slackCount > 0 || meetingCount > 0;
+}
+
+function shouldUseHistoricalReplay(reason = "") {
+  const normalized = String(reason || "").trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized === "cold-start") return true;
+  return normalized.startsWith("manual") || normalized.includes("sync") || normalized.includes("backfill") || normalized.includes("upcoming-brief");
+}
+
+function truncateText(value, maxLen = 140) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (text.length <= maxLen) return text;
+  return `${text.slice(0, Math.max(0, maxLen - 3))}...`;
+}
+
+function toNumericTs(value, fallback = 0) {
+  const normalized = String(value || "").split(".")[0];
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function collectSlackSnippets(rawSources = {}, limit = 3) {
+  const rows = Array.isArray(rawSources?.slack?.hr_discussions)
+    ? rawSources.slack.hr_discussions
+        .slice()
+        .sort((a, b) => toNumericTs(a?.timestamp || a?.ts) - toNumericTs(b?.timestamp || b?.ts))
+    : [];
+
+  const snippets = rows
+    .map((row) => truncateText(row?.text || "", 120))
+    .filter(Boolean)
+    .slice(-Math.max(1, limit));
+
+  return Array.from(new Set(snippets));
+}
+
+const EXIT_INTENT_PATTERNS = [
+  /\bwant to leave\b/i,
+  /\bleave this company\b/i,
+  /\bnot satisfied\b/i,
+  /\bquit\b/i,
+  /\bresign\b/i,
+  /\blooking for (other )?opportunit(?:y|ies)\b/i,
+  /\bjob search\b/i,
+  /\blinkedin\b/i,
+];
+
+function detectExitIntentSignals({ unified = {}, rawSources = {}, retentionRisk = {} } = {}) {
+  const textParts = [
+    String(unified?.mergedContextText || ""),
+    String(retentionRisk?.summary || ""),
+    ...collectSlackSnippets(rawSources, 10),
+  ];
+
+  const evidence = textParts.join("\n");
+  if (!evidence.trim()) {
+    return [];
+  }
+
+  return EXIT_INTENT_PATTERNS
+    .filter((pattern) => pattern.test(evidence))
+    .map((pattern) => pattern.source.replace(/\\b|\\/g, ""));
+}
+
+function applyExitIntentGuardrails({ sentiment = {}, retentionRisk = {}, unified = {}, rawSources = {} } = {}) {
+  const matchedSignals = detectExitIntentSignals({ unified, rawSources, retentionRisk });
+  if (!matchedSignals.length) {
+    return { sentiment, retentionRisk, matchedSignals };
+  }
+
+  const nextSentiment = { ...sentiment };
+  const currentSentimentScore = Number(nextSentiment?.score || 0);
+  nextSentiment.score = Math.min(currentSentimentScore, 35);
+  nextSentiment.trend = "down";
+
+  const currentEmotions = Array.isArray(nextSentiment?.emotions) ? nextSentiment.emotions : [];
+  nextSentiment.emotions = Array.from(new Set(["concern", "frustration", ...currentEmotions])).slice(0, 5);
+
+  const guardrailEvidence = `Exit-intent language detected (${matchedSignals.slice(0, 3).join(", ")}).`;
+  const existingEvidence = String(nextSentiment?.evidence || "").trim();
+  nextSentiment.evidence = existingEvidence
+    ? `${guardrailEvidence} ${existingEvidence}`
+    : guardrailEvidence;
+
+  const existingKeyEvidence = Array.isArray(nextSentiment?.keyEvidence) ? nextSentiment.keyEvidence : [];
+  nextSentiment.keyEvidence = [guardrailEvidence, ...existingKeyEvidence].slice(0, 5);
+
+  const existingValence = Array.isArray(nextSentiment?.valenceSignals) ? nextSentiment.valenceSignals : [];
+  nextSentiment.valenceSignals = Array.from(new Set(["negative:exit-intent", ...existingValence]));
+  nextSentiment.uncertainty = Number.isFinite(Number(nextSentiment?.uncertainty))
+    ? Math.min(Number(nextSentiment.uncertainty), 0.25)
+    : 0.25;
+
+  const nextRetentionRisk = { ...retentionRisk };
+  const currentRiskScore = Number(nextRetentionRisk?.riskScore || 0);
+  nextRetentionRisk.riskScore = Math.max(currentRiskScore, 76);
+  nextRetentionRisk.riskLevel = "critical";
+  nextRetentionRisk.summary = [
+    `Exit-intent language detected in latest context (${matchedSignals.slice(0, 3).join(", ")}).`,
+    String(nextRetentionRisk?.summary || "").trim(),
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const existingSignals = Array.isArray(nextRetentionRisk?.signals) ? nextRetentionRisk.signals : [];
+  const hasExitSignal = existingSignals.some((signal) => String(signal?.name || "").toLowerCase() === "exit-intent-detected");
+  if (!hasExitSignal) {
+    nextRetentionRisk.signals = [
+      {
+        name: "exit-intent-detected",
+        severity: "critical",
+        evidence: matchedSignals.slice(0, 3),
+      },
+      ...existingSignals,
+    ];
+  }
+
+  return { sentiment: nextSentiment, retentionRisk: nextRetentionRisk, matchedSignals };
+}
+
+function buildObservations({ sentiment = {}, retentionRisk = {}, previousProfile = null, rawSources = {} } = {}) {
+  const observations = [];
+  const currentSentiment = Number(sentiment?.score || 0);
+  const previousSentiment = Number(previousProfile?.analysis?.sentiment?.score);
+  const hasPrevious = Number.isFinite(previousSentiment);
+  const deltaSentiment = hasPrevious ? Math.round((currentSentiment - previousSentiment) * 100) / 100 : 0;
+
+  if (hasPrevious) {
+    observations.push(
+      `Sentiment moved ${deltaSentiment >= 0 ? "+" : ""}${deltaSentiment} points vs prior analysis (${Math.round(previousSentiment)} -> ${Math.round(currentSentiment)}).`
+    );
+  } else {
+    observations.push(`Current sentiment is ${Math.round(currentSentiment)}/100 from the latest analysis window.`);
+  }
+
+  const slackCount = countSlackDeltaMessages(rawSources?.slack || {});
+  const keyEvidence = Array.isArray(sentiment?.keyEvidence)
+    ? sentiment.keyEvidence.map((item) => truncateText(item, 120)).filter(Boolean)
+    : [];
+  const slackSnippets = collectSlackSnippets(rawSources, 3);
+
+  if (slackCount > 0) {
+    const evidenceLine = keyEvidence.length
+      ? `Key sentiment evidence: ${keyEvidence.slice(0, 2).join(" | ")}.`
+      : sentiment?.evidence
+        ? `Model evidence: ${truncateText(sentiment.evidence, 180)}.`
+        : "";
+    const snippetLine = slackSnippets.length
+      ? `Recent Slack excerpts: ${slackSnippets.map((item) => `"${item}"`).join(" | ")}.`
+      : "";
+
+    observations.push(
+      `Slack impact considered from ${slackCount} message${slackCount === 1 ? "" : "s"}. ${evidenceLine} ${snippetLine}`
+        .replace(/\s+/g, " ")
+        .trim()
+    );
+  } else {
+    observations.push("No new Slack text was available in this analysis window; sentiment relied on other available context.");
+  }
+
+  if (retentionRisk?.summary) {
+    observations.push(`Risk context: ${truncateText(retentionRisk.summary, 180)}`);
+  }
+
+  return observations.filter(Boolean).slice(0, 5);
 }
 
 function pickIdentityCandidate(rawSources, employeeEmail) {
@@ -141,12 +353,23 @@ async function runAnalysisPipeline({ unified, rawSources, reason, model, meeting
   const employeeEmail = unified.employee.email.toLowerCase();
   const previousProfile = await getLatestProfile(employeeEmail);
   const previousRiskLevel = previousProfile?.analysis?.retentionRisk?.level || null;
+  const scoringMode = getScoringMode();
 
-  const [sentiment, retentionRisk, summary] = await Promise.all([
+  const [sentimentResult, retentionRiskResult, summary] = await Promise.all([
     sentimentService({ unified, model }),
     retentionService({ rawSources }),
     summarizerService({ unified, model }),
   ]);
+
+  const {
+    sentiment,
+    retentionRisk,
+  } = applyExitIntentGuardrails({
+    sentiment: sentimentResult,
+    retentionRisk: retentionRiskResult,
+    unified,
+    rawSources,
+  });
 
   const enrichedBrief = await briefService({
     rawSources,
@@ -158,9 +381,30 @@ async function runAnalysisPipeline({ unified, rawSources, reason, model, meeting
     meetingAt,
   });
 
-  const healthScore = estimateHealth(sentiment, retentionRisk);
+  const deterministic = computeDeterministicScoring({
+    unified,
+    sentiment,
+    retentionRisk,
+    previousProfile,
+  });
+
+  const legacyHealthScore = estimateHealth(sentiment, retentionRisk);
+  const servedHealthScore = scoringMode === "hybrid" ? deterministic.components.healthScore : legacyHealthScore;
+  const servedRiskScore = scoringMode === "hybrid"
+    ? deterministic.retentionRiskScore
+    : Number(retentionRisk.riskScore || 0);
+  const servedRiskLevel = scoringMode === "hybrid"
+    ? riskLevelFromScore(servedRiskScore)
+    : retentionRisk.riskLevel || "low";
+
   const version = await getNextProfileVersion(employeeEmail);
   const comprehensive = comprehensiveSummaryService({ unified, sentiment, retentionRisk, summary });
+  const observations = buildObservations({
+    sentiment,
+    retentionRisk,
+    previousProfile,
+    rawSources,
+  });
 
   const profile = {
     employeeEmail,
@@ -170,23 +414,40 @@ async function runAnalysisPipeline({ unified, rawSources, reason, model, meeting
     analyzedAt: new Date().toISOString(),
     sourceStats: unified.sourceStats,
     analysis: {
+      scoringVersion: deterministic.scoringVersion,
+      components: deterministic.components,
+      temporal: deterministic.temporal,
+      extractionMeta: deterministic.extractionMeta,
       health: {
-        score: healthScore,
-        band: healthScore <= 40 ? "critical" : healthScore <= 60 ? "monitor" : healthScore <= 80 ? "healthy" : "thriving",
+        score: Number(servedHealthScore || 0),
+        band:
+          scoringMode === "hybrid"
+            ? deterministic.healthBand
+            : servedHealthScore <= 40
+              ? "critical"
+              : servedHealthScore <= 60
+                ? "monitor"
+                : servedHealthScore <= 80
+                  ? "healthy"
+                  : "thriving",
       },
       sentiment: {
         score: Number(sentiment.score || 0),
         trend: sentiment.trend || "flat",
         emotions: sentiment.emotions || [],
         evidence: sentiment.evidence || "",
+        keyEvidence: Array.isArray(sentiment.keyEvidence) ? sentiment.keyEvidence : [],
+        valenceSignals: Array.isArray(sentiment.valenceSignals) ? sentiment.valenceSignals : [],
+        uncertainty: Number.isFinite(Number(sentiment.uncertainty)) ? Number(sentiment.uncertainty) : null,
       },
       retentionRisk: {
-        score: Number(retentionRisk.riskScore || 0),
-        level: retentionRisk.riskLevel || "low",
+        score: Number(servedRiskScore || 0),
+        level: servedRiskLevel,
         signals: retentionRisk.signals || [],
         summary: retentionRisk.summary || "",
       },
       summary,
+      observations,
       brief: enrichedBrief?.brief || {},
       relationshipStatus: comprehensive.behavioralAnalysis.relationshipStatus,
       comprehensive,
@@ -194,9 +455,33 @@ async function runAnalysisPipeline({ unified, rawSources, reason, model, meeting
     },
   };
 
-  const alerts = createAlerts(profile, previousProfile, reason);
+  const alerts = createAlerts(profile, previousProfile, reason, deterministic.extractionMeta);
 
   await saveProfile(profile);
+  await saveSentimentHistory({
+    employeeEmail,
+    profileVersion: version,
+    analyzedAt: profile.analyzedAt,
+    score: Number(sentiment.score || 0),
+    smoothedScore: Number(deterministic.components.sentimentSmoothed || 0),
+    trend: sentiment.trend || "flat",
+    fallbackUsed: Boolean(deterministic.extractionMeta.sentimentFallbackUsed),
+    schemaValid: deterministic.extractionMeta.sentimentSchemaValid !== false,
+  });
+  await saveRiskHistory({
+    employeeEmail,
+    profileVersion: version,
+    analyzedAt: profile.analyzedAt,
+    score: Number(servedRiskScore || 0),
+    riskLogit: Number(deterministic.components.riskLogit || 0),
+    level: servedRiskLevel,
+    criticalCount: Number(retentionRisk.criticalCount || 0),
+    highCount: Number(retentionRisk.highCount || 0),
+    mediumCount: Number(retentionRisk.mediumCount || 0),
+    signalStrength: retentionRisk.signalStrength || { critical: 0, high: 0, medium: 0, low: 0 },
+    fallbackUsed: Boolean(deterministic.extractionMeta.retentionFallbackUsed),
+    schemaValid: deterministic.extractionMeta.retentionSchemaValid !== false,
+  });
   await upsertEmployeeIdentity({
     employeeEmail,
     employeeId: unified?.employee?.employeeId || null,
@@ -221,27 +506,39 @@ async function runAnalysisPipeline({ unified, rawSources, reason, model, meeting
 
 async function runInlinePipeline({ dataRoot, employeeEmail, reason, model, meetingAt, injectedSlackEvent = null }) {
   const syncState = await getSyncState(employeeEmail);
-  const historicalMode = reason === "cold-start";
-  const rawSources = await fetchAllSourcesParallelWithDelta({
+  const historicalMode = shouldUseHistoricalReplay(reason);
+  let rawSources = await fetchAllSourcesParallelWithDelta({
     dataRoot,
     employeeEmail,
     cursors: syncState,
     historicalMode,
     injectedSlackEvent,
   });
+
+  if (!historicalMode && !hasDeltaData(rawSources)) {
+    const replaySources = await fetchAllSourcesParallelWithDelta({
+      dataRoot,
+      employeeEmail,
+      cursors: syncState,
+      historicalMode: true,
+      injectedSlackEvent,
+    });
+    if (!hasDeltaData(replaySources)) {
+      await updateSyncState(employeeEmail, rawSources.cursors);
+      return {
+        skipped: true,
+        reason: "No delta data available.",
+        employeeEmail,
+      };
+    }
+    rawSources = replaySources;
+  }
+
   const identity = pickIdentityCandidate(rawSources, employeeEmail);
   if (identity) {
     await upsertEmployeeIdentity(identity);
   }
   await updateSyncState(employeeEmail, rawSources.cursors);
-
-  if (!historicalMode && !hasDeltaData(rawSources)) {
-    return {
-      skipped: true,
-      reason: "No delta data available.",
-      employeeEmail,
-    };
-  }
 
   const unified = normalizeUnifiedSchema(rawSources);
   await saveRawDataSnapshot({
@@ -281,8 +578,8 @@ async function startPipelineQueues({ redisUrl, dataRoot, model, mode = "auto" })
           const reason = job.data.reason || "manual";
 
           const syncState = await getSyncState(employeeEmail);
-          const historicalMode = Boolean(job.data.historicalMode);
-          const rawSources = await fetchAllSourcesParallelWithDelta({
+          const historicalMode = shouldUseHistoricalReplay(reason) || Boolean(job.data.historicalMode);
+          let rawSources = await fetchAllSourcesParallelWithDelta({
             dataRoot,
             employeeEmail,
             cursors: syncState,
@@ -290,20 +587,33 @@ async function startPipelineQueues({ redisUrl, dataRoot, model, mode = "auto" })
             injectedSlackEvent: job.data.injectedSlackEvent || null,
           });
 
+          if (!historicalMode && !hasDeltaData(rawSources)) {
+            const replaySources = await fetchAllSourcesParallelWithDelta({
+              dataRoot,
+              employeeEmail,
+              cursors: syncState,
+              historicalMode: true,
+              injectedSlackEvent: job.data.injectedSlackEvent || null,
+            });
+
+            if (!hasDeltaData(replaySources)) {
+              await updateSyncState(employeeEmail, rawSources.cursors);
+              return {
+                employeeEmail,
+                reason,
+                skipped: true,
+                skipReason: "No delta data available.",
+              };
+            }
+
+            rawSources = replaySources;
+          }
+
           const identity = pickIdentityCandidate(rawSources, employeeEmail);
           if (identity) {
             await upsertEmployeeIdentity(identity);
           }
           await updateSyncState(employeeEmail, rawSources.cursors);
-
-          if (!historicalMode && !hasDeltaData(rawSources)) {
-            return {
-              employeeEmail,
-              reason,
-              skipped: true,
-              skipReason: "No delta data available.",
-            };
-          }
 
           const unified = normalizeUnifiedSchema(rawSources);
 
@@ -403,7 +713,7 @@ async function enqueuePipelineRun({ employeeEmail, reason, dataRoot, model, meet
     {
       employeeEmail,
       reason: reason || "manual",
-      historicalMode: reason === "cold-start",
+      historicalMode: shouldUseHistoricalReplay(reason),
       meetingAt,
     },
     {

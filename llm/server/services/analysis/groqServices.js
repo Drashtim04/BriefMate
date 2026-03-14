@@ -37,44 +37,39 @@ function sentimentHeuristic(text) {
   };
 }
 
-async function runGroqJson({ model, temperature, system, user }) {
-  if (!getGroq()) {
-    return null;
-  }
-  return dispatchGroqJson({ model, temperature, system, user });
-}
+function sentimentFallback(unified) {
+  const fallback = sentimentHeuristic(unified?.mergedContextText || "");
+  const lower = String(unified?.mergedContextText || "").toLowerCase();
+  const valenceSignals = [];
 
-async function sentimentService({ unified, model }) {
-  const fallback = sentimentHeuristic(unified.mergedContextText);
-
-  const payload = await runGroqJson({
-    model,
-    temperature: TEMPERATURES.sentiment,
-    system: "You are a CHRO sentiment analysis service. Return deterministic JSON.",
-    user: `Analyze sentiment from this context and return JSON with fields score(0-100), trend(up|down|flat), emotions(string[]), evidence(string).\n\n${unified.mergedContextText}`,
+  ["burnout", "stress", "conflict", "undervalued", "overloaded"].forEach((token) => {
+    if (lower.includes(token)) valenceSignals.push(`negative:${token}`);
+  });
+  ["support", "progress", "appreciate", "confidence"].forEach((token) => {
+    if (lower.includes(token)) valenceSignals.push(`positive:${token}`);
   });
 
-  if (!payload) {
-    return fallback;
-  }
-
   return {
-    score: Number(payload.score ?? fallback.score),
-    trend: payload.trend || fallback.trend,
-    emotions: Array.isArray(payload.emotions) ? payload.emotions : fallback.emotions,
-    evidence: payload.evidence || fallback.evidence,
+    ...fallback,
+    valenceSignals,
+    uncertainty: 0.7,
+    keyEvidence: [fallback.evidence],
+    schemaValid: false,
+    fallbackUsed: true,
   };
 }
 
-async function retentionService({ rawSources }) {
-  if (process.env.GROQ_API_KEY) {
-    return analyzeRetentionRiskWithLLM({
-      hrms: rawSources.hrms,
-      meet: rawSources.meet,
-      slack: rawSources.slack,
-    });
+function isSentimentSchemaValid(payload) {
+  if (!payload || typeof payload !== "object") {
+    return false;
   }
+  const hasScore = Number.isFinite(Number(payload.score));
+  const hasTrend = ["up", "down", "flat"].includes(String(payload.trend || "").toLowerCase());
+  const hasEmotions = Array.isArray(payload.emotions);
+  return hasScore && hasTrend && hasEmotions;
+}
 
+function retentionFallbackFromSources(rawSources = {}) {
   const merged = [
     ...(rawSources?.meet?.transcript || []).map((item) => String(item.text || item.message || "")),
     ...(rawSources?.slack?.hr_discussions || []).map((item) => String(item.text || "")),
@@ -103,8 +98,75 @@ async function retentionService({ rawSources }) {
     riskLevel: level,
     signals: [],
     summary: "Rule-based retention risk fallback.",
+    criticalCount: 0,
+    highCount: 0,
+    mediumCount: 0,
+    signalStrength: {
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+    },
+    schemaValid: false,
+    fallbackUsed: true,
     analyzedAt: new Date().toISOString(),
   };
+}
+
+async function runGroqJson({ model, temperature, system, user }) {
+  if (!getGroq()) {
+    return null;
+  }
+  return dispatchGroqJson({ model, temperature, system, user });
+}
+
+async function sentimentService({ unified, model }) {
+  const fallback = sentimentFallback(unified);
+
+  const payload = await runGroqJson({
+    model,
+    temperature: TEMPERATURES.sentiment,
+    system: "You are a CHRO sentiment analysis service. Return deterministic JSON.",
+    user: `Analyze sentiment from this context and return JSON with fields score(0-100), trend(up|down|flat), emotions(string[]), evidence(string).\n\n${unified.mergedContextText}`,
+  });
+
+  if (!payload) {
+    return fallback;
+  }
+
+  const schemaValid = isSentimentSchemaValid(payload);
+  const safeScore = Number(payload.score ?? fallback.score);
+  const safeEvidence = payload.evidence || fallback.evidence;
+  const baseValence = Array.isArray(payload.valenceSignals) ? payload.valenceSignals : [];
+  const valenceSignals = baseValence.length ? baseValence : fallback.valenceSignals;
+
+  return {
+    score: Number.isFinite(safeScore) ? Math.max(0, Math.min(100, safeScore)) : fallback.score,
+    trend: payload.trend || fallback.trend,
+    emotions: Array.isArray(payload.emotions) ? payload.emotions : fallback.emotions,
+    evidence: safeEvidence,
+    valenceSignals,
+    uncertainty: Math.max(0, Math.min(1, Number(payload.uncertainty ?? (schemaValid ? 0.2 : 0.55)))),
+    keyEvidence: Array.isArray(payload.keyEvidence) ? payload.keyEvidence : [safeEvidence],
+    schemaValid,
+    fallbackUsed: !schemaValid,
+  };
+}
+
+async function retentionService({ rawSources }) {
+  if (process.env.GROQ_API_KEY) {
+    try {
+      return await analyzeRetentionRiskWithLLM({
+        hrms: rawSources.hrms,
+        meet: rawSources.meet,
+        slack: rawSources.slack,
+      });
+    } catch {
+      return retentionFallbackFromSources(rawSources);
+    }
+  }
+
+  return retentionFallbackFromSources(rawSources);
 }
 
 async function summarizerService({ unified, model }) {

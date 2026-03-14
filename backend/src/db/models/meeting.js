@@ -7,6 +7,10 @@ const MeetingSchema = new mongoose.Schema(
     employeeEmail: { type: String, required: true, index: true },
     meetingAt: { type: Date, required: true, index: true },
 
+    sourceSystem: { type: String, default: 'fireflies', index: true },
+    hrInvolved: { type: Boolean, default: true, index: true },
+    visibleInCalendar: { type: Boolean, default: true },
+
     title: { type: String, default: null },
     summary: { type: String, default: null },
     participants: { type: [String], default: null },
@@ -25,5 +29,6 @@ MeetingSchema.index(
 );
 MeetingSchema.index({ orgId: 1, employeeEmail: 1, meetingAt: -1 }, { name: 'ix_meetings_employee_date' });
 MeetingSchema.index({ orgId: 1, meetingAt: -1 }, { name: 'ix_meetings_date' });
+MeetingSchema.index({ orgId: 1, hrInvolved: 1, meetingAt: -1 }, { name: 'ix_meetings_hr_visibility' });
 
 module.exports = mongoose.model('Meeting', MeetingSchema);

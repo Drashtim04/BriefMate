@@ -18,7 +18,7 @@ function getSentimentFromScore(score) {
   return "Negative";
 }
 
-function normalizeSentiment(rawValue, healthScore) {
+function normalizeSentiment(rawValue, sentimentScoreRaw) {
   const text = String(rawValue || "").trim().toLowerCase();
   if (["positive", "neutral", "negative"].includes(text)) {
     return titleCase(text);
@@ -26,7 +26,7 @@ function normalizeSentiment(rawValue, healthScore) {
   if (text === "up") return "Positive";
   if (text === "flat") return "Neutral";
   if (text === "down") return "Negative";
-  return getSentimentFromScore(healthScore);
+  return getSentimentFromScore(sentimentScoreRaw);
 }
 
 function normalizeRisk(rawValue, healthScore) {
@@ -81,7 +81,7 @@ function EmployeeModal({ person, onClose }) {
               : person.sentiment === "Negative" ? "bg-red-100 text-red-800"
               : "bg-gray-100 text-gray-800"
             }`}>
-              Sentiment: {person.sentiment || ""}{Number.isFinite(Number(person.score)) ? ` (${Math.round(Number(person.score))}/100)` : ""}
+              Sentiment: {person.sentiment || ""}{Number.isFinite(Number(person.sentimentScoreRaw)) ? ` (${Math.round(Number(person.sentimentScoreRaw))}/100)` : ""}
             </span>
             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
               person.risk === "Critical" ? "bg-red-100 text-red-800"
@@ -92,6 +92,14 @@ function EmployeeModal({ person, onClose }) {
               Risk: {person.risk || ""}
             </span>
           </div>
+          {Number.isFinite(Number(person.confidence)) && (
+            <p className="text-xs text-gray-500 mt-1">
+              Confidence: {Math.round(Number(person.confidence) * 100)}%
+            </p>
+          )}
+          {Number.isFinite(Number(person.healthScore)) && (
+            <p className="text-xs text-gray-500 mt-1">Health Score: {Math.round(Number(person.healthScore))}/100</p>
+          )}
 
           {/* Employee details */}
           <div>
@@ -156,19 +164,30 @@ export function Dashboard() {
         const enrichedEmployees = employeeData.map((employee) => {
           const email = String(employee?.email || employee?.employeeEmail || "").toLowerCase();
           const summaryRow = summaryByEmail.get(email) || {};
-          const scoreCandidate = Number(summaryRow?.sentimentScore ?? summaryRow?.healthScore ?? employee?.score);
-          const score = Number.isFinite(scoreCandidate) ? scoreCandidate : NaN;
+          const sentimentScoreRawCandidate = Number(
+            summaryRow?.sentimentScore ?? employee?.sentimentScoreRaw
+          );
+          const sentimentScoreRaw = Number.isFinite(sentimentScoreRawCandidate)
+            ? sentimentScoreRawCandidate
+            : Number(employee?.sentimentScoreRaw);
+
+          const healthScoreCandidate = Number(summaryRow?.healthScore ?? employee?.healthScore ?? employee?.score);
+          const healthScore = Number.isFinite(healthScoreCandidate)
+            ? healthScoreCandidate
+            : Number(employee?.healthScore);
 
           return {
             ...employee,
-            score: Number.isFinite(score) ? score : employee?.score,
+            sentimentScoreRaw: Number.isFinite(sentimentScoreRaw) ? sentimentScoreRaw : employee?.sentimentScoreRaw,
+            healthScore: Number.isFinite(healthScore) ? healthScore : employee?.healthScore,
+            score: Number.isFinite(healthScore) ? healthScore : employee?.score,
             sentiment: normalizeSentiment(
               employee?.sentiment || summaryRow?.sentimentTrend || "",
-              score
+              Number.isFinite(sentimentScoreRaw) ? sentimentScoreRaw : employee?.sentimentScoreRaw
             ),
             risk: normalizeRisk(
               employee?.risk || summaryRow?.riskLevel || "",
-              score
+              Number.isFinite(healthScore) ? healthScore : employee?.healthScore
             ),
           };
         });
@@ -200,19 +219,23 @@ export function Dashboard() {
     const highRisk = Number(summary?.riskCounts?.high || 0);
     const criticalRisk = Number(summary?.riskCounts?.critical || 0);
     const atRisk = Number(summary?.atRiskEmployees || summary?.highRiskCount || highRisk + criticalRisk);
+    const risingRisk = Number(summary?.risingRiskEmployees || 0);
 
     const scoreValues = (summaryEmployees.length ? summaryEmployees : allEmployees)
-      .map((row) => Number(row?.sentimentScore ?? row?.healthScore ?? row?.score))
+      .map((row) => Number(row?.healthScore ?? row?.sentimentScore ?? row?.score))
       .filter((score) => Number.isFinite(score));
-    const sentiment = scoreValues.length
+    const computedAvgHealth = scoreValues.length
       ? Math.round(scoreValues.reduce((total, score) => total + score, 0) / scoreValues.length)
       : 0;
+    const avgHealthCandidate = Number(summary?.averageHealthScore);
+    const avgHealth = Number.isFinite(avgHealthCandidate) ? Math.round(avgHealthCandidate) : computedAvgHealth;
 
     return {
       totalEmployees,
       meetingsThisWeek,
       atRisk,
-      sentiment,
+      risingRisk,
+      avgHealth,
     };
   }, [allEmployees.length, summary]);
 
@@ -260,8 +283,8 @@ export function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <MetricCard title="Total Employees" value={String(metrics.totalEmployees)} description="Live employee registry" icon={Users} trend="up" />
           <MetricCard title="Meetings This Week" value={String(metrics.meetingsThisWeek)} description="From integrated meeting data" icon={Calendar} trend="up" />
-          <MetricCard title="Employees At Risk" value={String(metrics.atRisk)} description="Requires immediate attention" icon={AlertTriangle} trend="down" />
-          <MetricCard title="Sentiment Score" value={`${metrics.sentiment}/100`} description="Computed from latest profile analyses" icon={Activity} trend="up" />
+          <MetricCard title="Employees At Risk" value={String(metrics.atRisk)} description={`Requires immediate attention • ${metrics.risingRisk} rising risk`} icon={AlertTriangle} trend="down" />
+          <MetricCard title="Avg Health Score" value={`${metrics.avgHealth}/100`} description="Computed from latest profile analyses" icon={Activity} trend="up" />
         </div>
 
         {isLoading && <div className="text-sm text-gray-500">Loading dashboard data...</div>}
@@ -287,6 +310,7 @@ export function Dashboard() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Meeting</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sentiment</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Risk Level</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Risk Delta (30d)</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -298,7 +322,7 @@ export function Dashboard() {
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <div className="flex-shrink-0 h-8 w-8 rounded-full bg-[#1f7a6c]/10 flex items-center justify-center text-[#1f7a6c] font-medium text-xs">
+                        <div className="shrink-0 h-8 w-8 rounded-full bg-[#1f7a6c]/10 flex items-center justify-center text-[#1f7a6c] font-medium text-xs">
                           {person.name.split(" ").map((n) => n[0]).join("")}
                         </div>
                         <div className="ml-4">
@@ -315,7 +339,7 @@ export function Dashboard() {
                         : person.sentiment === "Negative" ? "bg-red-100 text-red-800"
                         : "bg-gray-100 text-gray-800"
                       }`}>
-                        {person.sentiment || ""}{Number.isFinite(Number(person.score)) ? ` (${Math.round(Number(person.score))})` : ""}
+                        {person.sentiment || ""}{Number.isFinite(Number(person.sentimentScoreRaw)) ? ` (${Math.round(Number(person.sentimentScoreRaw))})` : ""}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -328,11 +352,16 @@ export function Dashboard() {
                         {person.risk || ""}
                       </span>
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {Number.isFinite(Number(person.deltaRisk30d))
+                        ? `${Number(person.deltaRisk30d) > 0 ? "+" : ""}${Number(person.deltaRisk30d).toFixed(1)}`
+                        : "-"}
+                    </td>
                   </tr>
                 ))}
                 {insights.length === 0 && (
                   <tr>
-                    <td colSpan="5" className="px-6 py-8 text-center text-sm text-gray-500">
+                    <td colSpan="6" className="px-6 py-8 text-center text-sm text-gray-500">
                       No employee insights available.
                     </td>
                   </tr>

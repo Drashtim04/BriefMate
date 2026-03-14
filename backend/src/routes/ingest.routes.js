@@ -16,6 +16,7 @@ const {
 const { getOAuth2Client } = require('../connectors/google/googleClient');
 const { readTokens } = require('../shared/googleTokenStore');
 const { listEvents } = require('../connectors/google/googleCalendar');
+const { fetchTranscripts } = require('../connectors/fireflies/firefliesClient');
 
 const Organization = require('../db/models/Organization');
 const Document = require('../db/models/Document');
@@ -23,6 +24,8 @@ const DocumentParticipant = require('../db/models/DocumentParticipant');
 const DocumentChunk = require('../db/models/DocumentChunk');
 const Employee = require('../db/models/Employee');
 const ExternalIdentity = require('../db/models/ExternalIdentity');
+const Meeting = require('../db/models/meeting');
+const MeetingTranscriptTurn = require('../db/models/MeetingTranscriptTurn');
 
 const HrmsIdentitySnapshot = require('../db/models/HrmsIdentitySnapshot');
 const HrmsEmploymentSnapshot = require('../db/models/HrmsEmploymentSnapshot');
@@ -68,6 +71,76 @@ function parseBool(value, defaultValue = false) {
   if (['1', 'true', 'yes', 'y', 'on'].includes(v)) return true;
   if (['0', 'false', 'no', 'n', 'off'].includes(v)) return false;
   return defaultValue;
+}
+
+function parseEmailCsv(rawValue) {
+  if (!rawValue) return [];
+  return String(rawValue)
+    .split(',')
+    .map((value) => normalizeEmail(value))
+    .filter(Boolean);
+}
+
+function parseFirefliesDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (!Number.isNaN(date.getTime())) return date;
+
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) {
+    const epochMs = numeric > 9999999999 ? numeric : numeric * 1000;
+    const parsed = new Date(epochMs);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+
+  return null;
+}
+
+function collectFirefliesParticipantEmails(transcript) {
+  const participants = Array.isArray(transcript?.participants) ? transcript.participants : [];
+  const emails = [];
+
+  for (const participant of participants) {
+    if (typeof participant === 'string') {
+      const candidate = normalizeEmail(participant);
+      if (candidate.includes('@')) emails.push(candidate);
+      continue;
+    }
+
+    if (participant && typeof participant === 'object') {
+      const email = normalizeEmail(participant.email || participant.value || participant.name || '');
+      if (email.includes('@')) emails.push(email);
+    }
+  }
+
+  const hostEmail = normalizeEmail(transcript?.host_email);
+  const organizerEmail = normalizeEmail(transcript?.organizer_email);
+  if (hostEmail) emails.push(hostEmail);
+  if (organizerEmail) emails.push(organizerEmail);
+
+  return Array.from(new Set(emails));
+}
+
+function buildTranscriptSummary(sentences) {
+  const lines = Array.isArray(sentences)
+    ? sentences
+        .map((row) => String(row?.text || '').trim())
+        .filter(Boolean)
+        .slice(0, 3)
+    : [];
+  if (!lines.length) return null;
+  return lines.join(' ').slice(0, 600);
+}
+
+function toTranscriptTurns(sentences) {
+  if (!Array.isArray(sentences)) return [];
+  return sentences
+    .map((row, index) => ({
+      turnIndex: index,
+      speaker: String(row?.speaker_name || '').trim() || null,
+      text: String(row?.text || '').trim(),
+    }))
+    .filter((row) => row.text);
 }
 
 function stableStringify(value) {
@@ -1501,6 +1574,231 @@ router.post('/calendar/events', async (req, res, next) => {
       }
     });
   } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/ingest/fireflies/transcripts?limit=100&skip=0&fromDate=...&toDate=...&syncHrToCalendar=true
+router.post('/fireflies/transcripts', async (req, res, next) => {
+  try {
+    await ensureMongoConnected();
+
+    const orgId = getOrgId(req);
+    await ensureOrganization(orgId);
+
+    const limit = clampInt(req.query.limit !== undefined ? req.query.limit : req.body?.limit, {
+      min: 1,
+      max: 250,
+      fallback: 100,
+    });
+    const skip = clampInt(req.query.skip !== undefined ? req.query.skip : req.body?.skip, {
+      min: 0,
+      max: 100000,
+      fallback: 0,
+    });
+    const fromDate = req.query.fromDate || req.body?.fromDate;
+    const toDate = req.query.toDate || req.body?.toDate;
+    const syncHrToCalendar = parseBool(
+      req.query.syncHrToCalendar !== undefined ? req.query.syncHrToCalendar : req.body?.syncHrToCalendar,
+      true
+    );
+    const includeTranscriptInMeeting = parseBool(
+      req.query.includeTranscriptInMeeting !== undefined
+        ? req.query.includeTranscriptInMeeting
+        : req.body?.includeTranscriptInMeeting,
+      true
+    );
+
+    const calendarId = String(req.query.calendarId || req.body?.calendarId || 'primary').trim() || 'primary';
+
+    const configuredHrEmails = parseEmailCsv(process.env.HR_PARTICIPANT_EMAILS);
+    const requestHrEmails = parseEmailCsv(req.query.hrEmails || req.body?.hrEmails);
+    const hrEmailSet = new Set([...configuredHrEmails, ...requestHrEmails]);
+
+    const employees = await Employee.find({ orgId, workEmail: { $type: 'string' } }, { workEmail: 1 }).lean();
+    const employeeEmailSet = new Set(
+      employees
+        .map((row) => normalizeEmail(row?.workEmail))
+        .filter(Boolean)
+    );
+
+    const { transcripts } = await fetchTranscripts({ limit, skip, fromDate, toDate });
+
+    const meetingOps = [];
+    const transcriptOps = [];
+    const transcriptCleanupOps = [];
+    const syntheticCalendarOps = [];
+
+    let hrInvolvedCount = 0;
+    let nonHrCount = 0;
+
+    for (const transcript of transcripts) {
+      const id = String(transcript?.id || '').trim();
+      if (!id) continue;
+
+      const meetingId = `fireflies:${id}`;
+      const participants = collectFirefliesParticipantEmails(transcript);
+      const employeeParticipants = participants.filter(
+        (email) => employeeEmailSet.has(email) && !hrEmailSet.has(email)
+      );
+      const anyEmployeeParticipants = participants.filter((email) => employeeEmailSet.has(email));
+      const employeeEmail = employeeParticipants[0] || anyEmployeeParticipants[0] || participants[0] || 'unknown@unknown.local';
+
+      const hrInvolved = participants.some((email) => hrEmailSet.has(email));
+      if (hrInvolved) hrInvolvedCount += 1;
+      else nonHrCount += 1;
+
+      const meetingAt = parseFirefliesDate(transcript?.date) || new Date();
+      const turns = toTranscriptTurns(transcript?.sentences);
+      const summary = buildTranscriptSummary(transcript?.sentences);
+
+      meetingOps.push({
+        updateOne: {
+          filter: { orgId, meetingId },
+          update: {
+            $setOnInsert: { orgId, meetingId, createdAt: new Date() },
+            $set: {
+              sourceSystem: 'fireflies',
+              employeeEmail,
+              meetingAt,
+              title: String(transcript?.title || '').trim() || 'Meeting',
+              summary,
+              participants,
+              hrInvolved,
+              visibleInCalendar: hrInvolved,
+              transcript: includeTranscriptInMeeting ? turns : null,
+            },
+          },
+          upsert: true,
+        },
+      });
+
+      if (turns.length) {
+        for (const turn of turns) {
+          transcriptOps.push({
+            updateOne: {
+              filter: { orgId, meetingId, turnIndex: turn.turnIndex },
+              update: {
+                $setOnInsert: { orgId, meetingId, turnIndex: turn.turnIndex },
+                $set: {
+                  speaker: turn.speaker,
+                  text: turn.text,
+                },
+              },
+              upsert: true,
+            },
+          });
+        }
+
+        transcriptCleanupOps.push(
+          MeetingTranscriptTurn.deleteMany({ orgId, meetingId, turnIndex: { $gte: turns.length } })
+        );
+      }
+
+      if (syncHrToCalendar && hrInvolved) {
+        const externalId = `google_calendar:${calendarId}:fireflies:${id}`;
+        syntheticCalendarOps.push({
+          updateOne: {
+            filter: { orgId, sourceSystem: 'google_calendar', externalId },
+            update: {
+              $setOnInsert: {
+                orgId,
+                documentType: 'calendar_event',
+                sourceSystem: 'google_calendar',
+                externalId,
+                createdAt: new Date(),
+              },
+              $set: {
+                ingestedAt: new Date(),
+                sensitivity: 'standard',
+                content: String(transcript?.title || '').trim() || 'Meeting',
+                metadata: {
+                  calendarId,
+                  summary: String(transcript?.title || '').trim() || 'Meeting',
+                  description: summary,
+                  status: 'confirmed',
+                  start: { dateTime: meetingAt.toISOString() },
+                  end: {
+                    dateTime: new Date(
+                      meetingAt.getTime() + Math.max(5, Number(transcript?.duration || 0)) * 60000
+                    ).toISOString(),
+                  },
+                  organizer: { email: participants.find((email) => hrEmailSet.has(email)) || null },
+                  attendees: participants.map((email) => ({ email })),
+                  attendeesCount: participants.length,
+                  syncedFrom: 'fireflies',
+                  firefliesTranscriptId: id,
+                },
+                raw: {
+                  id,
+                  summary: transcript?.title || null,
+                  description: summary,
+                  start: { dateTime: meetingAt.toISOString() },
+                  end: {
+                    dateTime: new Date(
+                      meetingAt.getTime() + Math.max(5, Number(transcript?.duration || 0)) * 60000
+                    ).toISOString(),
+                  },
+                  organizer: { email: participants.find((email) => hrEmailSet.has(email)) || null },
+                  attendees: participants.map((email) => ({ email })),
+                },
+              },
+            },
+            upsert: true,
+          },
+        });
+      }
+    }
+
+    if (meetingOps.length) await Meeting.bulkWrite(meetingOps, { ordered: false });
+    if (transcriptOps.length) await MeetingTranscriptTurn.bulkWrite(transcriptOps, { ordered: false });
+    if (transcriptCleanupOps.length) await Promise.all(transcriptCleanupOps);
+    if (syntheticCalendarOps.length) await Document.bulkWrite(syntheticCalendarOps, { ordered: false });
+
+    const transcriptHash = hashObject({
+      ids: transcripts.map((row) => String(row?.id || '')).filter(Boolean).sort(),
+      fromDate: fromDate || null,
+      toDate: toDate || null,
+    });
+
+    await upsertIngestionCursorSuccess({
+      orgId,
+      sourceSystem: 'fireflies',
+      jobName: 'transcripts',
+      hash: transcriptHash,
+      cursor: String(skip + transcripts.length),
+      stats: {
+        transcriptsSeen: transcripts.length,
+        meetingsUpserted: meetingOps.length,
+        transcriptTurnsUpserted: transcriptOps.length,
+        syntheticCalendarEventsUpserted: syntheticCalendarOps.length,
+        hrInvolvedCount,
+        nonHrCount,
+      },
+    });
+
+    res.json({
+      ok: true,
+      data: {
+        orgId,
+        transcriptsSeen: transcripts.length,
+        meetingsUpserted: meetingOps.length,
+        transcriptTurnsUpserted: transcriptOps.length,
+        syntheticCalendarEventsUpserted: syntheticCalendarOps.length,
+        hrInvolvedCount,
+        nonHrCount,
+        syncHrToCalendar,
+        hrEmailCount: hrEmailSet.size,
+      },
+      warnings: hrEmailSet.size ? [] : ['No HR emails configured. Set HR_PARTICIPANT_EMAILS or pass hrEmails query/body.'],
+    });
+  } catch (err) {
+    try {
+      const orgId = getOrgId(req);
+      await upsertIngestionCursorError({ orgId, sourceSystem: 'fireflies', jobName: 'transcripts', err });
+    } catch (_) {
+      // ignore cursor update failures
+    }
     next(err);
   }
 });

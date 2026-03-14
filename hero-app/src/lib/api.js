@@ -30,7 +30,11 @@ async function request(path, options = {}) {
 
   if (!response.ok) {
     const message = data?.error?.message || data?.message || `Request failed (${response.status})`;
-    throw new Error(message);
+    const err = new Error(message);
+    err.status = response.status;
+    err.code = data?.error?.code || data?.code || "REQUEST_FAILED";
+    err.payload = data;
+    throw err;
   }
 
   return data;
@@ -136,14 +140,23 @@ export async function listEmployees() {
       summaryRow?.sentimentTrend ||
       "";
 
-    const scoreCandidate = getScoreCandidate(
-      row?.analysis?.sentiment?.score,
-      row?.analysis?.health?.score,
-      row?.analysis?.healthScore,
-      row?.sentimentScore,
-      row?.healthScore,
-      summaryRow?.sentimentScore,
-      summaryRow?.healthScore
+    const sentimentScoreRaw = asNumber(
+      getScoreCandidate(
+        summaryRow?.sentimentScore,
+        row?.analysis?.sentiment?.score,
+        row?.sentimentScore
+      ),
+      0
+    );
+
+    const healthScore = asNumber(
+      getScoreCandidate(
+        summaryRow?.healthScore,
+        row?.analysis?.health?.score,
+        row?.analysis?.healthScore,
+        row?.healthScore
+      ),
+      0
     );
 
     const reportedTotalMeetings = asNumber(row?.totalMeetings ?? row?.meetingCount, 0);
@@ -162,14 +175,52 @@ export async function listEmployees() {
       email,
       name,
       dept,
-      role,
       manager: row?.manager || "",
       joinDate: row?.joinDate || row?.hiredAt || "",
       lastMeeting: lastMeeting || row?.updatedAt || "",
       totalMeetings,
       risk: titleCase(String(riskRaw)),
       sentiment: titleCase(String(sentimentRaw)),
-      score: Number.isFinite(scoreCandidate) ? scoreCandidate : 0,
+      score: healthScore,
+      sentimentScoreRaw,
+      healthScore,
+      riskScore: asNumber(
+        getScoreCandidate(
+          summaryRow?.riskScore,
+          row?.analysis?.retentionRisk?.score,
+          row?.riskScore
+        ),
+        0
+      ),
+      confidence: asNumber(
+        getScoreCandidate(
+          summaryRow?.confidence,
+          row?.analysis?.components?.confidence,
+          row?.confidence
+        ),
+        0
+      ),
+      deltaRisk30d: asNumber(
+        getScoreCandidate(
+          summaryRow?.deltaRisk30d,
+          row?.analysis?.temporal?.deltaRisk30d,
+          row?.deltaRisk30d
+        ),
+        0
+      ),
+      deltaSentiment7d: asNumber(
+        getScoreCandidate(
+          summaryRow?.deltaSentiment7d,
+          row?.analysis?.temporal?.deltaSentiment7d,
+          row?.deltaSentiment7d
+        ),
+        0
+      ),
+      scoringVersion:
+        summaryRow?.scoringVersion ||
+        row?.analysis?.scoringVersion ||
+        row?.scoringVersion ||
+        "",
       updatedAt: row?.updatedAt || "",
     };
   }).filter((row) => row.email || row.id);
@@ -198,6 +249,60 @@ export async function getEmployeeProfileByEmail(email) {
     }
   }
 
+  const sentimentScoreRaw = asNumber(
+    getScoreCandidate(
+      data?.analysis?.sentiment?.score,
+      data?.analysis?.health?.score,
+      data?.analysis?.healthScore,
+      data?.sentimentScore,
+      data?.healthScore
+    ),
+    0
+  );
+
+  const healthScore = asNumber(
+    getScoreCandidate(
+      data?.analysis?.health?.score,
+      data?.analysis?.healthScore,
+      data?.healthScore,
+      sentimentScoreRaw
+    ),
+    0
+  );
+
+  const riskScore = asNumber(
+    getScoreCandidate(
+      data?.analysis?.retentionRisk?.score,
+      data?.analysis?.riskScore,
+      data?.riskScore
+    ),
+    0
+  );
+
+  const confidence = asNumber(
+    getScoreCandidate(
+      data?.analysis?.components?.confidence,
+      data?.confidence
+    ),
+    0
+  );
+
+  const deltaRisk30d = asNumber(
+    getScoreCandidate(
+      data?.analysis?.temporal?.deltaRisk30d,
+      data?.deltaRisk30d
+    ),
+    0
+  );
+
+  const deltaSentiment7d = asNumber(
+    getScoreCandidate(
+      data?.analysis?.temporal?.deltaSentiment7d,
+      data?.deltaSentiment7d
+    ),
+    0
+  );
+
   return {
     email: String(data?.employeeEmail || email || "").toLowerCase(),
     name: data?.employeeName || data?.displayName || data?.name || "",
@@ -206,25 +311,48 @@ export async function getEmployeeProfileByEmail(email) {
     manager: data?.manager || "",
     joinDate: data?.joinDate || data?.hiredAt || "",
     totalMeetings,
-    sentimentScore: `${asNumber(
-      getScoreCandidate(
-        data?.analysis?.sentiment?.score,
-        data?.analysis?.health?.score,
-        data?.analysis?.healthScore,
-        data?.sentimentScore,
-        data?.healthScore
-      ),
-      0
-    )}/100`,
+    healthScore,
+    healthBand: data?.analysis?.health?.band || "",
+    sentimentScoreRaw,
+    sentimentScore: `${asNumber(sentimentScoreRaw, 0)}/100`,
     sentimentTrend: titleCase(data?.analysis?.sentiment?.trend || ""),
+    sentimentEvidence: data?.analysis?.sentiment?.evidence || "",
+    sentimentKeyEvidence: Array.isArray(data?.analysis?.sentiment?.keyEvidence)
+      ? data.analysis.sentiment.keyEvidence
+      : [],
     riskLevel: titleCase(data?.analysis?.retentionRisk?.level || data?.analysis?.riskLevel || data?.retentionRisk || ""),
+    riskScore,
+    confidence,
+    deltaRisk30d,
+    deltaSentiment7d,
+    scoringVersion: data?.analysis?.scoringVersion || data?.scoringVersion || "",
+    extractionMeta: data?.analysis?.extractionMeta || {},
+    contributors: data?.analysis?.components?.contributors || {},
     riskSummary: data?.analysis?.retentionRisk?.summary || "",
+    slackMessageCount: asNumber(data?.sourceStats?.slackMessageCount, 0),
     lastMeetingAt,
     observations: Array.isArray(data?.analysis?.observations)
       ? data.analysis.observations
       : Array.isArray(data?.analysis?.summary?.chunks)
         ? data.analysis.summary.chunks.map((chunk) => chunk.summary).filter(Boolean)
         : [],
+  };
+}
+
+export async function getEmployeeHistoryByEmail(email, limit = 30) {
+  const safeEmail = encodeURIComponent(String(email || "").toLowerCase());
+  const parsedLimit = Number.parseInt(String(limit), 10);
+  const safeLimit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(parsedLimit, 180)) : 30;
+
+  const payload = await request(
+    `/api/intelligence/employees/${safeEmail}/history?limit=${safeLimit}`
+  );
+
+  return {
+    employeeEmail: String(payload?.employeeEmail || email || "").toLowerCase(),
+    sentimentHistory: Array.isArray(payload?.sentimentHistory) ? payload.sentimentHistory : [],
+    riskHistory: Array.isArray(payload?.riskHistory) ? payload.riskHistory : [],
+    summary: payload?.summary && typeof payload.summary === "object" ? payload.summary : {},
   };
 }
 
@@ -386,6 +514,212 @@ export async function syncBambooHrEmployees(options = {}) {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export async function syncLatestSignals(options = {}) {
+  const transcriptLimitRaw = Number.parseInt(String(options.transcriptLimit ?? 25), 10);
+  const transcriptLimit = Number.isFinite(transcriptLimitRaw)
+    ? Math.max(1, Math.min(transcriptLimitRaw, 200))
+    : 25;
+
+  const runPipeline = options.runPipeline !== false;
+  const continueOnError = options.continueOnError !== false;
+  const reason = String(options.reason || "manual-latest-signals-sync");
+
+  const result = {
+    success: false,
+    warnings: [],
+    fireflies: {
+      ok: false,
+      transcriptsSeen: 0,
+      raw: null,
+      error: "",
+    },
+    slackUsers: {
+      ok: false,
+      usersSeen: 0,
+      raw: null,
+      error: "",
+    },
+    slackMessages: {
+      ok: false,
+      channelsSeen: 0,
+      channelsProcessed: 0,
+      messagesSeen: 0,
+      documentsUpserted: 0,
+      perChannelFailures: [],
+      raw: null,
+      error: "",
+    },
+    pipeline: {
+      ok: false,
+      acceptedCount: 0,
+      totalCandidates: 0,
+      errorCount: 0,
+      raw: null,
+      error: "",
+    },
+  };
+
+  try {
+    const firefliesPayload = await request(
+      `/api/ingest/fireflies/transcripts?limit=${transcriptLimit}&syncHrToCalendar=true`,
+      { method: "POST" }
+    );
+    const data = firefliesPayload?.data || firefliesPayload || {};
+    result.fireflies.ok = true;
+    result.fireflies.raw = firefliesPayload;
+    result.fireflies.transcriptsSeen = asNumber(
+      getScoreCandidate(
+        data?.transcriptsSeen,
+        data?.count,
+        data?.processed,
+        data?.inserted,
+        data?.total
+      ),
+      0
+    );
+  } catch (err) {
+    result.fireflies.error = err?.message || "Fireflies sync failed";
+    result.warnings.push({ step: "fireflies", message: result.fireflies.error });
+  }
+
+  try {
+    const channelsPayload = await request("/api/ingest/slack/channels?incremental=true", {
+      method: "POST",
+    });
+    const channelsData = channelsPayload?.data || channelsPayload || {};
+    let channelIds = Array.isArray(channelsData?.channelIds)
+      ? channelsData.channelIds
+          .map((value) => String(value || "").trim())
+          .filter(Boolean)
+      : [];
+
+    // When incremental snapshot hash is unchanged, backend may not include channelIds.
+    // Force one non-incremental fetch so message sync can still iterate known channels.
+    if (channelIds.length === 0 && asNumber(channelsData?.channelsSeen, 0) > 0) {
+      try {
+        const fallbackChannelsPayload = await request("/api/ingest/slack/channels?incremental=false", {
+          method: "POST",
+        });
+        const fallbackData = fallbackChannelsPayload?.data || fallbackChannelsPayload || {};
+        channelIds = Array.isArray(fallbackData?.channelIds)
+          ? fallbackData.channelIds
+              .map((value) => String(value || "").trim())
+              .filter(Boolean)
+          : channelIds;
+      } catch (_fallbackErr) {
+        // Keep best-effort behavior; message sync will no-op if channelIds remain empty.
+      }
+    }
+
+    result.slackMessages.ok = true;
+    result.slackMessages.raw = channelsPayload;
+    result.slackMessages.channelsSeen = Math.max(channelIds.length, asNumber(channelsData?.channelsSeen, 0));
+
+    for (const channelId of channelIds) {
+      try {
+        const messagePayload = await request(
+          `/api/ingest/slack/channels/${encodeURIComponent(channelId)}/messages?incremental=true&daysBack=120&includeReplies=false`,
+          { method: "POST" }
+        );
+        const messageData = messagePayload?.data || messagePayload || {};
+
+        result.slackMessages.channelsProcessed += 1;
+        result.slackMessages.messagesSeen += asNumber(
+          getScoreCandidate(
+            messageData?.messagesSeen,
+            messageData?.count,
+            messageData?.processed,
+            messageData?.inserted,
+            messageData?.total
+          ),
+          0
+        );
+        result.slackMessages.documentsUpserted += asNumber(
+          getScoreCandidate(
+            messageData?.documentsUpserted,
+            messageData?.upserted,
+            messageData?.inserted,
+            messageData?.updated
+          ),
+          0
+        );
+      } catch (err) {
+        const message = err?.message || `Slack message sync failed for channel ${channelId}`;
+        result.slackMessages.perChannelFailures.push({ channelId, message });
+        result.warnings.push({ step: "slackMessages", channelId, message });
+      }
+    }
+  } catch (err) {
+    result.slackMessages.error = err?.message || "Slack channels sync failed";
+    result.warnings.push({ step: "slackMessages", message: result.slackMessages.error });
+  }
+
+  try {
+    const slackPayload = await request("/api/ingest/slack/users?incremental=true", {
+      method: "POST",
+    });
+    const data = slackPayload?.data || slackPayload || {};
+    result.slackUsers.ok = true;
+    result.slackUsers.raw = slackPayload;
+    result.slackUsers.usersSeen = asNumber(
+      getScoreCandidate(
+        data?.usersSeen,
+        data?.count,
+        data?.processed,
+        data?.inserted,
+        data?.updated,
+        data?.total
+      ),
+      0
+    );
+  } catch (err) {
+    result.slackUsers.error = err?.message || "Slack users sync failed";
+    result.warnings.push({ step: "slackUsers", message: result.slackUsers.error });
+  }
+
+  try {
+    const pipelinePayload = await syncBambooHrEmployees({
+      runPipeline,
+      continueOnError,
+      reason,
+    });
+    const data = pipelinePayload?.data || pipelinePayload || {};
+    result.pipeline.ok = true;
+    result.pipeline.raw = pipelinePayload;
+    result.pipeline.acceptedCount = asNumber(
+      getScoreCandidate(data?.acceptedCount, pipelinePayload?.acceptedCount),
+      0
+    );
+    result.pipeline.totalCandidates = asNumber(
+      getScoreCandidate(data?.totalCandidates, pipelinePayload?.totalCandidates),
+      0
+    );
+    result.pipeline.errorCount = asNumber(
+      getScoreCandidate(data?.errorCount, pipelinePayload?.errorCount),
+      0
+    );
+  } catch (err) {
+    result.pipeline.error = err?.message || "Pipeline sync failed";
+    result.warnings.push({ step: "pipeline", message: result.pipeline.error });
+  }
+
+  const succeeded = [
+    result.fireflies.ok,
+    result.slackUsers.ok,
+    result.slackMessages.ok,
+    result.pipeline.ok,
+  ].filter(Boolean).length;
+  result.success = succeeded > 0;
+
+  if (succeeded === 0) {
+    throw new Error(
+      "Unable to sync latest signals. Fireflies, Slack channels/messages, Slack users, and pipeline sync all failed."
+    );
+  }
+
+  return result;
 }
 
 export { BACKEND_BASE_URL };

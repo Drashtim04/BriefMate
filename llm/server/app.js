@@ -17,6 +17,8 @@ import {
   getSyncState,
   getDatabaseMeetingSource,
   upsertEmployeeIdentity,
+  listSentimentHistory,
+  listRiskHistory,
   getChatSession,
   createChatSession,
   appendChatMessage,
@@ -86,6 +88,18 @@ const sourceCheckSchema = z.object({
       return ["1", "true", "yes", "y", "on"].includes(normalized);
     }),
 });
+
+function dedupeProfilesByEmployee(rows = []) {
+  const byEmail = new Map();
+  rows.forEach((row) => {
+    const email = String(row?.employeeEmail || "").toLowerCase();
+    if (!email) return;
+    if (!byEmail.has(email)) {
+      byEmail.set(email, row);
+    }
+  });
+  return Array.from(byEmail.values());
+}
 
 const syncBambooHrSchema = z.object({
   reason: z.string().optional(),
@@ -216,7 +230,12 @@ app.get("/ingestion/source-check", async (req, res) => {
     const transcript = Array.isArray(meet?.transcript) ? meet.transcript : [];
     const slackCount = Object.values(sources?.slack || {}).reduce((total, value) => {
       if (!Array.isArray(value)) return total;
-      return total + value.length;
+      return (
+        total +
+        value.reduce((count, item) => {
+          return String(item?.text || "").trim() ? count + 1 : count;
+        }, 0)
+      );
     }, 0);
 
     return res.json({
@@ -461,6 +480,44 @@ app.get("/employees/:email/profile", async (req, res) => {
   }
 });
 
+app.get("/employees/:email/history", async (req, res) => {
+  try {
+    const email = String(req.params.email || "").toLowerCase();
+    const parsedLimit = Number.parseInt(String(req.query.limit || 30), 10);
+    const safeLimit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(parsedLimit, 180)) : 30;
+
+    const [sentimentHistory, riskHistory] = await Promise.all([
+      listSentimentHistory(email, { limit: safeLimit }),
+      listRiskHistory(email, { limit: safeLimit }),
+    ]);
+
+    const sentimentFirst = sentimentHistory[0];
+    const sentimentLast = sentimentHistory[sentimentHistory.length - 1];
+    const riskFirst = riskHistory[0];
+    const riskLast = riskHistory[riskHistory.length - 1];
+
+    const summary = {
+      latestSentimentScore: Number(sentimentLast?.score ?? 0),
+      latestRiskScore: Number(riskLast?.score ?? 0),
+      sentimentDelta:
+        sentimentHistory.length > 1
+          ? Number(sentimentLast?.score ?? 0) - Number(sentimentFirst?.score ?? 0)
+          : 0,
+      riskDelta: riskHistory.length > 1 ? Number(riskLast?.score ?? 0) - Number(riskFirst?.score ?? 0) : 0,
+    };
+
+    return res.json({
+      employeeEmail: email,
+      limit: safeLimit,
+      sentimentHistory,
+      riskHistory,
+      summary,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "failed to load history" });
+  }
+});
+
 app.get("/meetings", async (req, res) => {
   try {
     const email = req.query.employeeEmail ? String(req.query.employeeEmail).toLowerCase() : undefined;
@@ -638,10 +695,11 @@ app.post("/chat/query", async (req, res) => {
 
     const validatedFilter = sanitizeFilter(rawFilter);
     const rows = await queryProfiles(rawFilter);
+    const uniqueRows = dedupeProfilesByEmployee(rows);
 
     const response = await chatAssistantService({
       query: parsed.query,
-      rows,
+      rows: uniqueRows,
       model: env.GROQ_MODEL,
     });
 
@@ -650,7 +708,7 @@ app.post("/chat/query", async (req, res) => {
       role: "assistant",
       content: String(response.answer || "No response generated."),
       metadata: {
-        count: rows.length,
+        count: uniqueRows.length,
         filters: validatedFilter,
         transcriptCards: Array.isArray(response.transcriptCards) ? response.transcriptCards : [],
       },
@@ -682,7 +740,7 @@ app.post("/chat/query", async (req, res) => {
       sessionId,
       query: parsed.query,
       filter: validatedFilter,
-      count: rows.length,
+      count: uniqueRows.length,
       answer: response.answer,
       transcriptCards: response.transcriptCards,
     });
