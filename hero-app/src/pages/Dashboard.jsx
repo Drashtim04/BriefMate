@@ -5,6 +5,42 @@ import { SentimentChart } from "../components/SentimentChart";
 import { DepartmentPieChart } from "../components/DepartmentPieChart";
 import { getDashboardSummary, listEmployees } from "../lib/api";
 
+function titleCase(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) return "";
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function getSentimentFromScore(score) {
+  if (!Number.isFinite(score)) return "Neutral";
+  if (score >= 70) return "Positive";
+  if (score >= 45) return "Neutral";
+  return "Negative";
+}
+
+function normalizeSentiment(rawValue, healthScore) {
+  const text = String(rawValue || "").trim().toLowerCase();
+  if (["positive", "neutral", "negative"].includes(text)) {
+    return titleCase(text);
+  }
+  if (text === "up") return "Positive";
+  if (text === "flat") return "Neutral";
+  if (text === "down") return "Negative";
+  return getSentimentFromScore(healthScore);
+}
+
+function normalizeRisk(rawValue, healthScore) {
+  const text = String(rawValue || "").trim().toLowerCase();
+  if (["critical", "high", "medium", "low"].includes(text)) {
+    return titleCase(text);
+  }
+  if (!Number.isFinite(healthScore)) return "Low";
+  if (healthScore <= 35) return "Critical";
+  if (healthScore <= 50) return "High";
+  if (healthScore <= 70) return "Medium";
+  return "Low";
+}
+
 // ---------- Employee Detail Modal ----------
 function EmployeeModal({ person, onClose }) {
   if (!person) return null;
@@ -45,10 +81,11 @@ function EmployeeModal({ person, onClose }) {
               : person.sentiment === "Negative" ? "bg-red-100 text-red-800"
               : "bg-gray-100 text-gray-800"
             }`}>
-              Sentiment: {person.sentiment || ""}
+              Sentiment: {person.sentiment || ""}{Number.isFinite(Number(person.score)) ? ` (${Math.round(Number(person.score))}/100)` : ""}
             </span>
             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-              person.risk === "High" ? "bg-amber-100 text-orange-800"
+              person.risk === "Critical" ? "bg-red-100 text-red-800"
+              : person.risk === "High" ? "bg-amber-100 text-orange-800"
               : person.risk === "Medium" ? "bg-yellow-100 text-yellow-800"
               : "bg-green-100 text-green-800"
             }`}>
@@ -108,8 +145,36 @@ export function Dashboard() {
         const [summaryData, employeeData] = await Promise.all([getDashboardSummary(), listEmployees()]);
         if (!isMounted) return;
 
-        setAllEmployees(employeeData);
-        setInsights(employeeData.slice(0, 6));
+        const summaryEmployees = Array.isArray(summaryData?.employees) ? summaryData.employees : [];
+        const summaryByEmail = new Map(
+          summaryEmployees.map((row) => [
+            String(row?.email || row?.employeeEmail || "").toLowerCase(),
+            row,
+          ])
+        );
+
+        const enrichedEmployees = employeeData.map((employee) => {
+          const email = String(employee?.email || employee?.employeeEmail || "").toLowerCase();
+          const summaryRow = summaryByEmail.get(email) || {};
+          const scoreCandidate = Number(summaryRow?.sentimentScore ?? summaryRow?.healthScore ?? employee?.score);
+          const score = Number.isFinite(scoreCandidate) ? scoreCandidate : NaN;
+
+          return {
+            ...employee,
+            score: Number.isFinite(score) ? score : employee?.score,
+            sentiment: normalizeSentiment(
+              employee?.sentiment || summaryRow?.sentimentTrend || "",
+              score
+            ),
+            risk: normalizeRisk(
+              employee?.risk || summaryRow?.riskLevel || "",
+              score
+            ),
+          };
+        });
+
+        setAllEmployees(enrichedEmployees);
+        setInsights(enrichedEmployees.slice(0, 6));
         setSummary(summaryData || {});
       } catch (err) {
         if (!isMounted) return;
@@ -136,11 +201,11 @@ export function Dashboard() {
     const criticalRisk = Number(summary?.riskCounts?.critical || 0);
     const atRisk = Number(summary?.atRiskEmployees || summary?.highRiskCount || highRisk + criticalRisk);
 
-    const healthScores = summaryEmployees
-      .map((row) => Number(row?.healthScore))
+    const scoreValues = (summaryEmployees.length ? summaryEmployees : allEmployees)
+      .map((row) => Number(row?.sentimentScore ?? row?.healthScore ?? row?.score))
       .filter((score) => Number.isFinite(score));
-    const sentiment = healthScores.length
-      ? Math.round(healthScores.reduce((total, score) => total + score, 0) / healthScores.length)
+    const sentiment = scoreValues.length
+      ? Math.round(scoreValues.reduce((total, score) => total + score, 0) / scoreValues.length)
       : 0;
 
     return {
@@ -208,7 +273,7 @@ export function Dashboard() {
         </div>
 
         {/* SECTION 4 – Recent Employee Insights (clickable rows) */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="surface-card rounded-2xl overflow-hidden">
           <div className="px-6 py-5 border-b border-gray-200 flex items-center justify-between">
             <h3 className="text-lg font-semibold text-[#1f2937]">Recent Employee Insights</h3>
             <span className="text-xs text-gray-400">Click a row to view details</span>
@@ -250,12 +315,13 @@ export function Dashboard() {
                         : person.sentiment === "Negative" ? "bg-red-100 text-red-800"
                         : "bg-gray-100 text-gray-800"
                       }`}>
-                        {person.sentiment || ""}
+                        {person.sentiment || ""}{Number.isFinite(Number(person.score)) ? ` (${Math.round(Number(person.score))})` : ""}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-medium rounded-full ${
-                        person.risk === "High"   ? "bg-amber-100 text-orange-800"
+                        person.risk === "Critical" ? "bg-red-100 text-red-800"
+                        : person.risk === "High"   ? "bg-amber-100 text-orange-800"
                         : person.risk === "Medium" ? "bg-yellow-100 text-yellow-800"
                         : "bg-green-100 text-green-800"
                       }`}>

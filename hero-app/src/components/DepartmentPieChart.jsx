@@ -1,14 +1,14 @@
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
-const COLORS = ["#1f7a6c", "#f59e0b", "#3b82f6", "#8b5cf6"];
+const COLORS = ["#0f766e", "#d97706", "#0f4c81", "#4d7c0f"];
 
 export function DepartmentPieChart({ data = [] }) {
   return (
-    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-      <h3 className="text-lg font-semibold text-[#1f2937] mb-6">Department Mood Distribution</h3>
+    <div className="surface-card p-6 rounded-2xl">
+      <h3 className="text-lg font-semibold text-[#172033] mb-6">Department Mood Distribution</h3>
       <div className="h-[300px] w-full">
         {data.length === 0 ? (
-          <div className="h-full w-full flex items-center justify-center text-sm text-gray-500">
+          <div className="h-full w-full flex items-center justify-center text-sm text-[#64748b]">
             No department data available.
           </div>
         ) : (
@@ -28,7 +28,7 @@ export function DepartmentPieChart({ data = [] }) {
                 ))}
               </Pie>
               <Tooltip
-                contentStyle={{ borderRadius: "8px", border: "1px solid #e5e7eb" }}
+                contentStyle={{ borderRadius: "12px", border: "1px solid #d7e3e6", boxShadow: "0 8px 24px rgba(23, 32, 51, 0.12)" }}
               />
               <Legend verticalAlign="bottom" height={36} iconType="circle" />
             </PieChart>

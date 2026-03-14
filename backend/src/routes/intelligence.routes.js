@@ -108,6 +108,25 @@ router.post('/chat/query', async (req, res, next) => {
   await proxyJson({ req, res, next, method: 'POST', targetPath: '/chat/query', body: req.body || {} });
 });
 
+router.post('/chat/sessions', async (req, res, next) => {
+  await proxyJson({ req, res, next, method: 'POST', targetPath: '/chat/sessions', body: req.body || {} });
+});
+
+router.get('/chat/sessions/:sessionId/history', async (req, res, next) => {
+  const sessionId = encodeURIComponent(String(req.params.sessionId || ''));
+  const params = new URLSearchParams();
+  if (req.query.limit) params.set('limit', String(req.query.limit));
+  const qs = params.toString();
+
+  await proxyJson({
+    req,
+    res,
+    next,
+    method: 'GET',
+    targetPath: `/chat/sessions/${sessionId}/history${qs ? `?${qs}` : ''}`
+  });
+});
+
 router.post('/pipeline/run', async (req, res, next) => {
   await proxyJson({ req, res, next, method: 'POST', targetPath: '/pipeline/run', body: req.body || {} });
 });

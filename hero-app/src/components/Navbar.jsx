@@ -1,6 +1,7 @@
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Search, Bell, User, LogOut, Menu, X } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
+import { AnimatePresence, motion } from "motion/react";
 
 // Nav items shown in the app shell (non-landing pages)
 const APP_NAV_ITEMS = [
@@ -29,7 +30,6 @@ function useOutsideClick(ref, callback) {
 
 export function Navbar() {
   const location  = useLocation();
-  const navigate  = useNavigate();
   const isLanding = location.pathname === "/";
 
   const [notifications] = useState([]);
@@ -73,24 +73,29 @@ export function Navbar() {
 
   const navItems  = isLanding ? LANDING_NAV_ITEMS : APP_NAV_ITEMS;
 
-  const navBg      = isLanding ? "bg-white/80 backdrop-blur-md border-b border-black/5" : "bg-white border-b border-gray-200";
-  const logoColor  = isLanding ? "text-[#0f0f0f]" : "text-[#1f7a6c]";
-  const mutedColor = isLanding ? "text-gray-400"   : "text-gray-500";
+  const navBg      = isLanding ? "app-navbar-panel border-b border-black/5" : "app-navbar-panel border-b border-[#d7e3e6]";
+  const logoColor  = isLanding ? "text-[#0f0f0f]" : "text-[#0f766e]";
+  const mutedColor = isLanding ? "text-gray-400"   : "text-[#64748b]";
 
-  const activeLink   = isLanding ? "bg-black/5 text-[#0f0f0f] font-medium"       : "bg-[#1f7a6c]/10 text-[#1f7a6c]";
-  const inactiveLink = isLanding ? "text-gray-600 hover:bg-black/5 hover:text-[#0f0f0f]" : "text-[#1f2937] hover:bg-gray-100";
+  const activeLink   = isLanding
+    ? "bg-black/5 text-[#0f0f0f] font-semibold shadow-sm"
+    : "bg-[#0f766e]/12 text-[#0f766e] font-semibold shadow-sm border border-[#0f766e]/15";
+  const inactiveLink = isLanding
+    ? "text-gray-600 hover:bg-black/5 hover:text-[#0f0f0f]"
+    : "text-[#1f2937] hover:bg-white hover:text-[#0a5f59]";
 
-  const dropdownBg = "bg-white border border-gray-200 shadow-lg";
+  const dropdownBg = "bg-white/95 backdrop-blur-xl border border-[#d7e3e6] shadow-[0_16px_34px_rgba(23,32,51,0.14)]";
 
   return (
     <>
-      <nav className={`fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-3 transition-colors duration-300 ${navBg}`}>
+      <nav className={`app-navbar fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 sm:px-6 py-3 transition-colors duration-300 ${navBg}`}>
 
         {/* ── Left: Logo + Nav links ── */}
         <div className="flex items-center gap-6">
           <Link
             to="/"
             className={`flex items-center gap-2 text-xl font-bold tracking-tight hover:opacity-80 transition-opacity ${logoColor}`}
+            style={{ fontFamily: "var(--font-serif)" }}
           >
             <img
               src="/assets/logo.png"
@@ -102,12 +107,12 @@ export function Navbar() {
           </Link>
 
           {/* Desktop nav links */}
-          <div className="hidden md:flex items-center gap-1">
+          <div className="hidden md:flex items-center gap-1.5 rounded-full p-1 bg-white/70 border border-[#d7e3e6]">
             {navItems.map((item) => (
               <Link
                 key={item.name}
                 to={item.path}
-                className={`px-3 py-2 text-sm font-medium rounded transition-colors duration-150 ${
+                className={`px-3 py-2 text-sm rounded-full transition-colors duration-150 ${
                   location.pathname === item.path ? activeLink : inactiveLink
                 }`}
               >
@@ -119,7 +124,7 @@ export function Navbar() {
             {isLanding && (
               <Link
                 to="/login"
-                className={`px-3 py-2 text-sm font-medium rounded transition-colors duration-150 ${inactiveLink}`}
+                className={`px-3 py-2 text-sm rounded-full transition-colors duration-150 ${inactiveLink}`}
               >
                 Login
               </Link>
@@ -136,7 +141,7 @@ export function Navbar() {
             <input
               type="text"
               placeholder="Search..."
-              className="pl-9 pr-4 py-1.5 text-sm rounded-full border border-gray-200 bg-white/70 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#1f7a6c]/40 focus:border-[#1f7a6c] hover:bg-white transition-colors"
+              className="pl-9 pr-4 py-2 text-sm rounded-full border border-[#d7e3e6] bg-white/85 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0f766e]/30 focus:border-[#0f766e] hover:bg-white transition-colors"
             />
           </div>
 
@@ -144,7 +149,7 @@ export function Navbar() {
           <div className="relative" ref={notifRef}>
             <button
               onClick={handleNotifToggle}
-              className={`relative p-2 rounded-full transition-colors text-gray-500 hover:text-[#f59e0b] hover:bg-[#f59e0b]/10`}
+              className="relative p-2 rounded-full transition-colors text-gray-500 hover:text-[#d97706] hover:bg-[#d97706]/10"
               aria-label="Notifications"
             >
               <Bell className="w-5 h-5" />
@@ -154,8 +159,15 @@ export function Navbar() {
               )}
             </button>
 
-            {isNotifOpen && (
-              <div className={`absolute right-0 mt-2 w-80 rounded-xl overflow-hidden ${dropdownBg}`}>
+            <AnimatePresence>
+              {isNotifOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                className={`absolute right-0 mt-2 w-80 rounded-xl overflow-hidden ${dropdownBg}`}
+              >
                 <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
                   <span className="text-sm font-semibold text-gray-700">Notifications</span>
                   <span className="text-xs text-gray-400">{notifications.length} notifications</span>
@@ -181,24 +193,32 @@ export function Navbar() {
                     View all notifications
                   </button>
                 </div>
-              </div>
-            )}
+              </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Avatar */}
           <div className="relative" ref={avatarRef}>
             <button
               onClick={() => { setIsAvatarOpen(!isAvatarOpen); setIsNotifOpen(false); }}
-              className={`p-0.5 rounded-full border-2 transition-colors border-gray-200 hover:border-[#1f7a6c]`}
+              className="p-0.5 rounded-full border-2 transition-colors border-[#d7e3e6] hover:border-[#0f766e] bg-white"
               aria-label="User menu"
             >
-              <div className="w-8 h-8 rounded-full flex items-center justify-center font-medium text-sm bg-[#1f7a6c]/10 text-[#1f7a6c]">
+              <div className="w-8 h-8 rounded-full flex items-center justify-center font-medium text-sm bg-[#0f766e]/10 text-[#0f766e]">
                 {avatarText}
               </div>
             </button>
 
-            {isAvatarOpen && (
-              <div className={`absolute right-0 mt-2 w-48 rounded-xl overflow-hidden ${dropdownBg}`}>
+            <AnimatePresence>
+              {isAvatarOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                className={`absolute right-0 mt-2 w-48 rounded-xl overflow-hidden ${dropdownBg}`}
+              >
                 <div className="px-4 py-3 border-b border-gray-100">
                   <p className="text-sm font-semibold text-gray-800">{currentUser.name}</p>
                   <p className="text-xs text-gray-400 truncate">{currentUser.email}</p>
@@ -217,13 +237,14 @@ export function Navbar() {
                 >
                   <LogOut className="w-4 h-4" /> Logout
                 </Link>
-              </div>
-            )}
+              </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Mobile hamburger */}
           <button
-            className={`md:hidden p-2 rounded transition-colors text-gray-500 hover:bg-gray-100`}
+            className="md:hidden p-2 rounded-full transition-colors text-gray-500 hover:bg-white"
             onClick={() => setIsMobileOpen(true)}
           >
             <Menu className="w-5 h-5" />
@@ -232,12 +253,26 @@ export function Navbar() {
       </nav>
 
       {/* ── Mobile Slide-in Menu ── */}
+      <AnimatePresence>
       {isMobileOpen && (
         <>
-          <div className="fixed inset-0 z-40 bg-black/50" onClick={() => setIsMobileOpen(false)} />
-          <div className="fixed top-0 right-0 bottom-0 z-50 w-64 bg-white shadow-2xl flex flex-col">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-40 bg-black/50"
+            onClick={() => setIsMobileOpen(false)}
+          />
+          <motion.div
+            initial={{ x: 280 }}
+            animate={{ x: 0 }}
+            exit={{ x: 280 }}
+            transition={{ type: "spring", stiffness: 320, damping: 30, mass: 0.9 }}
+            className="fixed top-0 right-0 bottom-0 z-50 w-64 bg-white shadow-2xl flex flex-col border-l border-[#d7e3e6]"
+          >
             <div className="flex items-center justify-between px-4 py-4 border-b border-gray-200">
-              <span className="text-lg font-bold text-[#1f7a6c]">HRX</span>
+              <span className="text-lg font-bold text-[#0f766e]" style={{ fontFamily: "var(--font-serif)" }}>HRX</span>
               <button onClick={() => setIsMobileOpen(false)} className="p-1 text-gray-500 hover:text-gray-700">
                 <X className="w-5 h-5" />
               </button>
@@ -277,9 +312,10 @@ export function Navbar() {
                 <LogOut className="w-4 h-4" /> Logout
               </Link>
             </div>
-          </div>
+          </motion.div>
         </>
       )}
+      </AnimatePresence>
     </>
   );
 }

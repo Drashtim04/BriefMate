@@ -8,6 +8,8 @@ const memory = {
   syncState: [],
   meetings: [],
   systemState: [],
+  chatSessions: [],
+  chatMessages: [],
 };
 
 let mongoClient = null;
@@ -54,6 +56,22 @@ async function initMongo({ mongoUri, mongoDbName, useMemoryStore }) {
       partialFilterExpression: { key: { $type: "string" } },
     }
   );
+  await mongoDb.collection("chat_sessions").createIndex(
+    { sessionId: 1 },
+    {
+      unique: true,
+      partialFilterExpression: { sessionId: { $type: "string" } },
+    }
+  );
+  await mongoDb.collection("chat_sessions").createIndex({ lastMessageAt: -1 });
+  await mongoDb.collection("chat_messages").createIndex(
+    { sessionId: 1, messageIndex: 1 },
+    {
+      unique: true,
+      partialFilterExpression: { sessionId: { $type: "string" }, messageIndex: { $type: "int" } },
+    }
+  );
+  await mongoDb.collection("chat_messages").createIndex({ sessionId: 1, createdAt: 1 });
 
   return { mode: "mongo" };
 }
@@ -205,6 +223,221 @@ async function markColdBootCompleted(details = {}) {
     { upsert: true }
   );
   return payload;
+}
+
+function toSafeSessionId(value) {
+  return String(value || "").trim();
+}
+
+function toSafeRole(role) {
+  const safe = String(role || "").toLowerCase();
+  if (["user", "assistant", "system"].includes(safe)) {
+    return safe;
+  }
+  return "assistant";
+}
+
+async function getChatSession(sessionId) {
+  const key = toSafeSessionId(sessionId);
+  if (!key) {
+    return null;
+  }
+
+  if (!isMongoReady()) {
+    return memory.chatSessions.find((item) => item.sessionId === key) || null;
+  }
+
+  return mongoDb.collection("chat_sessions").findOne({ sessionId: key });
+}
+
+async function createChatSession({ sessionId, status = "active" } = {}) {
+  const key = toSafeSessionId(sessionId);
+  if (!key) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+
+  if (!isMongoReady()) {
+    const index = memory.chatSessions.findIndex((item) => item.sessionId === key);
+    const existing = index >= 0 ? memory.chatSessions[index] : null;
+    const next = {
+      sessionId: key,
+      status: String(status || "active"),
+      startedAt: existing?.startedAt || now,
+      lastMessageAt: existing?.lastMessageAt || now,
+      nextMessageIndex: Number(existing?.nextMessageIndex || 0),
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+    };
+
+    if (index >= 0) {
+      memory.chatSessions[index] = { ...existing, ...next };
+      return memory.chatSessions[index];
+    }
+
+    memory.chatSessions.push(next);
+    return next;
+  }
+
+  await mongoDb.collection("chat_sessions").updateOne(
+    { sessionId: key },
+    {
+      $set: {
+        status: String(status || "active"),
+        updatedAt: now,
+      },
+      $setOnInsert: {
+        sessionId: key,
+        startedAt: now,
+        lastMessageAt: now,
+        nextMessageIndex: 0,
+        createdAt: now,
+      },
+    },
+    { upsert: true }
+  );
+
+  return mongoDb.collection("chat_sessions").findOne({ sessionId: key });
+}
+
+async function updateChatSessionActivity(sessionId, patch = {}) {
+  const key = toSafeSessionId(sessionId);
+  if (!key) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const next = {
+    lastMessageAt: patch.lastMessageAt || now,
+    updatedAt: now,
+  };
+  if (patch.status) {
+    next.status = String(patch.status);
+  }
+
+  if (!isMongoReady()) {
+    const index = memory.chatSessions.findIndex((item) => item.sessionId === key);
+    if (index >= 0) {
+      memory.chatSessions[index] = { ...memory.chatSessions[index], ...next };
+      return memory.chatSessions[index];
+    }
+
+    const created = {
+      sessionId: key,
+      status: String(patch.status || "active"),
+      startedAt: now,
+      createdAt: now,
+      nextMessageIndex: 0,
+      ...next,
+    };
+    memory.chatSessions.push(created);
+    return created;
+  }
+
+  await mongoDb.collection("chat_sessions").updateOne(
+    { sessionId: key },
+    {
+      $set: next,
+      $setOnInsert: {
+        sessionId: key,
+        startedAt: now,
+        createdAt: now,
+        nextMessageIndex: 0,
+      },
+    },
+    { upsert: true }
+  );
+
+  return mongoDb.collection("chat_sessions").findOne({ sessionId: key });
+}
+
+async function appendChatMessage({ sessionId, role, content, metadata = {} }) {
+  const key = toSafeSessionId(sessionId);
+  const safeRole = toSafeRole(role);
+  const text = String(content || "").trim();
+  if (!key || !text) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+
+  if (!isMongoReady()) {
+    const sameSession = memory.chatMessages.filter((item) => item.sessionId === key);
+    const messageIndex = sameSession.length
+      ? Math.max(...sameSession.map((item) => Number(item.messageIndex || 0))) + 1
+      : 0;
+
+    const doc = {
+      sessionId: key,
+      messageIndex,
+      role: safeRole,
+      content: text,
+      metadata: metadata && typeof metadata === "object" ? metadata : {},
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    memory.chatMessages.push(doc);
+    await updateChatSessionActivity(key, { status: "active", lastMessageAt: now });
+    return doc;
+  }
+
+  const sessionAfterUpdate = await mongoDb.collection("chat_sessions").findOneAndUpdate(
+    { sessionId: key },
+    {
+      $inc: { nextMessageIndex: 1 },
+      $set: {
+        status: "active",
+        lastMessageAt: now,
+        updatedAt: now,
+      },
+      $setOnInsert: {
+        sessionId: key,
+        startedAt: now,
+        createdAt: now,
+      },
+    },
+    { upsert: true, returnDocument: "after" }
+  );
+
+  const nextMessageIndex = Number(sessionAfterUpdate?.nextMessageIndex || 1);
+  const messageIndex = Math.max(0, nextMessageIndex - 1);
+
+  const doc = {
+    sessionId: key,
+    messageIndex,
+    role: safeRole,
+    content: text,
+    metadata: metadata && typeof metadata === "object" ? metadata : {},
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await mongoDb.collection("chat_messages").insertOne(doc);
+  return doc;
+}
+
+async function listChatMessages(sessionId, { limit = 100 } = {}) {
+  const key = toSafeSessionId(sessionId);
+  const safeLimit = Math.max(1, Math.min(Number(limit || 100), 500));
+  if (!key) {
+    return [];
+  }
+
+  if (!isMongoReady()) {
+    return memory.chatMessages
+      .filter((item) => item.sessionId === key)
+      .sort((a, b) => Number(a.messageIndex || 0) - Number(b.messageIndex || 0))
+      .slice(-safeLimit);
+  }
+
+  return mongoDb
+    .collection("chat_messages")
+    .find({ sessionId: key })
+    .sort({ messageIndex: 1 })
+    .limit(safeLimit)
+    .toArray();
 }
 
 async function getNextProfileVersion(employeeEmail) {
@@ -517,6 +750,7 @@ async function getDashboardSummary() {
     employees: latestRows.map((row) => ({
       email: row.employeeEmail,
       name: row.employeeName,
+      sentimentScore: row?.analysis?.sentiment?.score,
       healthScore: row?.analysis?.health?.score,
       riskLevel: row?.analysis?.retentionRisk?.level,
       sentimentTrend: row?.analysis?.sentiment?.trend,
@@ -541,6 +775,10 @@ export {
   isColdBootCompleted,
   markColdBootCompleted,
   getLatestProfile,
+  getChatSession,
+  createChatSession,
+  appendChatMessage,
+  listChatMessages,
   getNextProfileVersion,
   saveProfile,
   saveAlerts,

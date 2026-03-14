@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { env } from "./config/env.js";
@@ -13,6 +14,10 @@ import {
   getMeetingById,
   listEmployees,
   getEmployeeMeetingStats,
+  getChatSession,
+  createChatSession,
+  appendChatMessage,
+  listChatMessages,
 } from "./services/storage/stores.js";
 import { initCache, getJson, warmDashboardCache } from "./services/cache/cacheService.js";
 import {
@@ -45,6 +50,12 @@ const slackWebhookSchema = z.object({
 const chatSchema = z.object({
   query: z.string().min(3),
   stream: z.boolean().optional().default(false),
+  sessionId: z.string().min(3).max(120).optional(),
+});
+
+const createChatSessionSchema = z.object({
+  sessionId: z.string().min(3).max(120).optional(),
+  status: z.enum(["active", "archived"]).optional(),
 });
 
 const bootstrapSchema = z.object({
@@ -272,9 +283,78 @@ app.post("/briefs/upcoming", async (req, res) => {
   }
 });
 
+app.post("/chat/sessions", async (req, res) => {
+  try {
+    const parsed = createChatSessionSchema.parse(req.body || {});
+    const sessionId = String(parsed.sessionId || randomUUID());
+    const session = await createChatSession({
+      sessionId,
+      status: parsed.status || "active",
+    });
+
+    return res.status(201).json({
+      ok: true,
+      data: {
+        sessionId: session?.sessionId || sessionId,
+        status: session?.status || "active",
+        startedAt: session?.startedAt || new Date().toISOString(),
+        lastMessageAt: session?.lastMessageAt || new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "failed to create chat session" });
+  }
+});
+
+app.get("/chat/sessions/:sessionId/history", async (req, res) => {
+  try {
+    const sessionId = String(req.params.sessionId || "").trim();
+    if (!sessionId) {
+      return res.status(400).json({ error: "sessionId is required" });
+    }
+
+    const limit = Math.max(1, Math.min(Number(req.query.limit || 120), 500));
+    const session = await getChatSession(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: "chat session not found" });
+    }
+
+    const rows = await listChatMessages(sessionId, { limit });
+    return res.json({
+      sessionId,
+      count: rows.length,
+      data: rows.map((row) => ({
+        sessionId: row.sessionId,
+        messageIndex: Number(row.messageIndex || 0),
+        role: row.role || "assistant",
+        content: row.content || "",
+        metadata: row.metadata || {},
+        createdAt: row.createdAt || null,
+      })),
+      session: {
+        status: session.status || "active",
+        startedAt: session.startedAt || null,
+        lastMessageAt: session.lastMessageAt || null,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "failed to load chat history" });
+  }
+});
+
 app.post("/chat/query", async (req, res) => {
   try {
     const parsed = chatSchema.parse(req.body || {});
+    const sessionId = String(parsed.sessionId || randomUUID());
+
+    await createChatSession({ sessionId, status: "active" });
+    await appendChatMessage({
+      sessionId,
+      role: "user",
+      content: parsed.query,
+      metadata: { source: "chat-query" },
+    });
+
     const rawFilter = await intentExtractorService({
       query: parsed.query,
       model: env.GROQ_MODEL,
@@ -289,6 +369,17 @@ app.post("/chat/query", async (req, res) => {
       model: env.GROQ_MODEL,
     });
 
+    await appendChatMessage({
+      sessionId,
+      role: "assistant",
+      content: String(response.answer || "No response generated."),
+      metadata: {
+        count: rows.length,
+        filters: validatedFilter,
+        transcriptCards: Array.isArray(response.transcriptCards) ? response.transcriptCards : [],
+      },
+    });
+
     if (parsed.stream) {
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
@@ -301,6 +392,8 @@ app.post("/chat/query", async (req, res) => {
         res.write(`data: ${JSON.stringify({ token: chunk, index })}\n\n`);
       }
 
+      res.write("event: session\n");
+      res.write(`data: ${JSON.stringify({ sessionId })}\n\n`);
       res.write("event: cards\n");
       res.write(`data: ${JSON.stringify({ transcriptCards: response.transcriptCards })}\n\n`);
       res.write("event: end\n");
@@ -310,6 +403,7 @@ app.post("/chat/query", async (req, res) => {
     }
 
     return res.json({
+      sessionId,
       query: parsed.query,
       filter: validatedFilter,
       count: rows.length,

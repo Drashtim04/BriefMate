@@ -98,7 +98,7 @@ export function Employees() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className="surface-card rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -109,6 +109,8 @@ export function Employees() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Joining Date</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Meeting</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Meetings</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sentiment Score</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Risk</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
@@ -139,6 +141,19 @@ export function Employees() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{person.lastMeeting}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{person.totalMeetings}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {Number.isFinite(Number(person.score)) ? `${Math.round(Number(person.score))}/100` : "--"}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-medium rounded-full ${
+                      person.risk === "Critical" ? "bg-red-100 text-red-800"
+                      : person.risk === "High" ? "bg-amber-100 text-orange-800"
+                      : person.risk === "Medium" ? "bg-yellow-100 text-yellow-800"
+                      : "bg-green-100 text-green-800"
+                    }`}>
+                      {person.risk || "Low"}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <button
                       type="button"
                       onClick={(event) => {
@@ -158,7 +173,7 @@ export function Employees() {
               ))}
               {filteredEmployees.length === 0 && (
                 <tr>
-                  <td colSpan="7" className="px-6 py-8 text-center text-sm text-gray-500">
+                  <td colSpan="9" className="px-6 py-8 text-center text-sm text-gray-500">
                     No employees found matching &ldquo;{search}&rdquo;
                   </td>
                 </tr>

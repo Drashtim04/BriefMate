@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Calendar as CalendarIcon, Clock, Users, ArrowRight, Lightbulb, CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
-import { getMeetingTranscript, listMeetings } from "../lib/api";
+import { Calendar as CalendarIcon, Clock, Users, ArrowRight, Lightbulb, CheckCircle2, ChevronLeft, ChevronRight, Loader2, ShieldAlert } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { getMeetingTranscript, getUpcomingBrief, listMeetings } from "../lib/api";
 
 // ---------- Mini Calendar ----------
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -110,6 +111,8 @@ export function MeetingSummary() {
   const [selectedMeeting, setSelectedMeeting] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [isBriefLoading, setIsBriefLoading] = useState(false);
+  const [briefNotice, setBriefNotice] = useState("");
 
   useEffect(() => {
     let isMounted = true;
@@ -152,6 +155,7 @@ export function MeetingSummary() {
               employeeEmail: participantEmail,
               empName: formatNameFromEmail(participantEmail),
               dept: "",
+              meetingAt: at,
               date: at ? String(at).slice(0, 10) : "",
               displayDate: toDisplayDate(at),
               time: toDisplayTime(at),
@@ -163,6 +167,7 @@ export function MeetingSummary() {
                 career: "",
               },
               suggestions: [],
+              brief: null,
             };
           })
           .filter((row) => row.id);
@@ -229,6 +234,102 @@ export function MeetingSummary() {
     };
   }, [selectedMeeting?.id]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    function mapBriefToSummary(brief = {}) {
+      const concerns = Array.isArray(brief?.handleCarefully) ? brief.handleCarefully.join(", ") : "";
+      const career = Array.isArray(brief?.whatChangedSinceLastMeeting)
+        ? brief.whatChangedSinceLastMeeting.join(", ")
+        : "";
+
+      return {
+        topics: brief?.executiveSummary || "",
+        concerns,
+        career,
+      };
+    }
+
+    function mapBriefSuggestions(brief = {}) {
+      const starters = Array.isArray(brief?.conversationStarters) ? brief.conversationStarters : [];
+      const followUps = Array.isArray(brief?.openFollowUps)
+        ? brief.openFollowUps
+            .map((item) => {
+              const owner = String(item?.owner || "").trim();
+              const task = String(item?.task || "").trim();
+              if (!owner && !task) return "";
+              return owner ? `${owner}: ${task}` : task;
+            })
+            .filter(Boolean)
+        : [];
+
+      return [...starters, ...followUps].slice(0, 6);
+    }
+
+    async function hydrateBrief() {
+      if (!selectedMeeting?.employeeEmail) {
+        setBriefNotice("");
+        return;
+      }
+
+      const meetingId = selectedMeeting.id;
+      setIsBriefLoading(true);
+      setBriefNotice("");
+
+      try {
+        const response = await getUpcomingBrief(
+          selectedMeeting.employeeEmail,
+          selectedMeeting.meetingAt || undefined
+        );
+        if (!isMounted) return;
+
+        const brief = response?.brief || response?.data?.brief || null;
+        const message = response?.message || response?.data?.message || "";
+        const relationshipStatus =
+          response?.relationshipStatus ||
+          response?.data?.relationshipStatus ||
+          brief?.relationshipStatus ||
+          "";
+
+        if (!brief) {
+          setBriefNotice(message || "Brief generation was queued. Select this meeting again after a short delay.");
+          return;
+        }
+
+        const mappedSummary = mapBriefToSummary(brief);
+        const suggestions = mapBriefSuggestions(brief);
+
+        setSelectedMeeting((prev) => {
+          if (!prev || prev.id !== meetingId) return prev;
+          return {
+            ...prev,
+            aiSummary: {
+              topics: mappedSummary.topics || prev.aiSummary.topics,
+              concerns: mappedSummary.concerns,
+              career: mappedSummary.career,
+            },
+            suggestions,
+            brief: {
+              healthBand: brief?.healthBand || "",
+              recommendedTone: brief?.recommendedTone || "",
+              relationshipStatus,
+            },
+          };
+        });
+      } catch (_err) {
+        if (!isMounted) return;
+        setBriefNotice("Unable to fetch upcoming brief guidance right now.");
+      } finally {
+        if (isMounted) setIsBriefLoading(false);
+      }
+    }
+
+    hydrateBrief();
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedMeeting?.id, selectedMeeting?.employeeEmail, selectedMeeting?.meetingAt]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -248,8 +349,8 @@ export function MeetingSummary() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" style={{ minHeight: "600px" }}>
         {/* LEFT — Calendar + meeting list */}
-        <div className="col-span-1 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
-          <div className="p-4 border-b border-gray-200 bg-gray-50 font-semibold text-gray-700 flex items-center text-sm">
+        <div className="col-span-1 surface-card rounded-2xl overflow-hidden flex flex-col">
+          <div className="p-4 border-b border-[#dbe5e8] bg-[linear-gradient(180deg,#f5fafb_0%,#edf5f7_100%)] font-semibold text-gray-700 flex items-center text-sm">
             <CalendarIcon className="w-4 h-4 mr-2 text-[#1f7a6c]" /> Calendar
           </div>
           <div className="p-4">
@@ -284,15 +385,23 @@ export function MeetingSummary() {
         </div>
 
         {/* RIGHT — Details panel */}
-        <div className="col-span-1 lg:col-span-2 bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
+        <div className="col-span-1 lg:col-span-2 surface-card rounded-2xl flex flex-col overflow-hidden">
           {!selectedMeeting ? (
             <div className="h-full flex items-center justify-center text-sm text-gray-500 p-6">
               Select a meeting to view transcript and insights.
             </div>
           ) : (
-            <>
+            <AnimatePresence mode="wait">
+            <motion.div
+              key={selectedMeeting.id}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.24 }}
+              className="h-full"
+            >
           {/* Meeting header */}
-          <div className="p-6 border-b border-gray-200 bg-gray-50">
+          <div className="p-6 border-b border-[#dbe5e8] bg-[linear-gradient(180deg,#f5fafb_0%,#edf5f7_100%)]">
             <h2 className="text-lg font-bold text-[#1f2937]">
               {selectedMeeting.empName} — {selectedMeeting.type}
             </h2>
@@ -304,10 +413,40 @@ export function MeetingSummary() {
 
           <div className="flex-1 overflow-y-auto p-6 space-y-8">
             {/* AI Summary */}
-            <section className="bg-slate-50 p-5 rounded-xl border border-slate-200">
+            <section className="bg-[linear-gradient(180deg,#f7fbfc_0%,#eef6f4_100%)] p-5 rounded-xl border border-[#dbe5e8]">
               <h3 className="text-sm font-bold text-[#1f2937] mb-3 flex items-center">
                 <Lightbulb className="w-4 h-4 text-[#f59e0b] mr-2" /> AI Summary Insights
               </h3>
+
+              {isBriefLoading && (
+                <div className="mb-3 inline-flex items-center gap-2 text-xs text-[#1f7a6c] bg-[#1f7a6c]/10 border border-[#1f7a6c]/20 rounded-md px-2 py-1">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Refreshing meeting brief guidance...
+                </div>
+              )}
+
+              {briefNotice && (
+                <div className="mb-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                  {briefNotice}
+                </div>
+              )}
+
+              {selectedMeeting.brief && (
+                <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                  <div className="rounded-md border border-gray-200 bg-white px-3 py-2">
+                    <div className="text-gray-500">Health Band</div>
+                    <div className="font-semibold text-[#1f2937]">{selectedMeeting.brief.healthBand || "Unknown"}</div>
+                  </div>
+                  <div className="rounded-md border border-gray-200 bg-white px-3 py-2">
+                    <div className="text-gray-500">Recommended Tone</div>
+                    <div className="font-semibold text-[#1f2937]">{selectedMeeting.brief.recommendedTone || "Supportive"}</div>
+                  </div>
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                    <div className="text-amber-700 inline-flex items-center gap-1"><ShieldAlert className="w-3.5 h-3.5" /> Relationship Status</div>
+                    <div className="font-semibold text-amber-800">{selectedMeeting.brief.relationshipStatus || "Stable"}</div>
+                  </div>
+                </div>
+              )}
+
               <ul className="space-y-3">
                 {[
                   ["Topics",   selectedMeeting.aiSummary.topics],
@@ -363,7 +502,8 @@ export function MeetingSummary() {
               </div>
             </section>
           </div>
-            </>
+            </motion.div>
+            </AnimatePresence>
           )}
         </div>
       </div>
