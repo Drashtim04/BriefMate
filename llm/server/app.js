@@ -14,6 +14,8 @@ import {
   getMeetingById,
   listEmployees,
   getEmployeeMeetingStats,
+  getSyncState,
+  getDatabaseMeetingSource,
   getChatSession,
   createChatSession,
   appendChatMessage,
@@ -31,6 +33,7 @@ import {
   chatAssistantService,
 } from "./services/analysis/groqServices.js";
 import { initGroqDispatcher, getGroqDispatcherInfo } from "./services/analysis/groqDispatcher.js";
+import { fetchAllSourcesParallelWithDelta } from "./services/ingestion/fetchSources.js";
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -65,7 +68,112 @@ const bootstrapSchema = z.object({
 const upcomingBriefSchema = z.object({
   employeeEmail: z.string().email(),
   meetingAt: z.string().optional(),
+  participantEmails: z.array(z.string().email()).optional(),
 });
+
+const sourceCheckSchema = z.object({
+  employeeEmail: z.string().email(),
+  historicalMode: z
+    .union([z.boolean(), z.string()])
+    .optional()
+    .transform((value) => {
+      if (typeof value === "boolean") return value;
+      const normalized = String(value || "").trim().toLowerCase();
+      return ["1", "true", "yes", "y", "on"].includes(normalized);
+    }),
+});
+
+function normalizeEmailList(values = []) {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value || "").trim().toLowerCase())
+        .filter((value) => value.includes("@"))
+    )
+  );
+}
+
+function toTimestamp(value) {
+  const time = new Date(value || 0).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function buildPastMeetingInsights(rows = [], meetingAt) {
+  const upcomingAt = toTimestamp(meetingAt) || Date.now() + 2 * 60 * 60 * 1000;
+  const sorted = rows
+    .slice()
+    .sort((a, b) => toTimestamp(b?.meetingAt || b?.updatedAt) - toTimestamp(a?.meetingAt || a?.updatedAt));
+
+  const past = sorted.filter((row) => {
+    const at = toTimestamp(row?.meetingAt || row?.updatedAt);
+    return at > 0 && at <= upcomingAt;
+  });
+
+  const recentMeetings = past.slice(0, 3).map((row) => ({
+    meetingId: row?.meetingId || "",
+    meetingAt: row?.meetingAt || row?.updatedAt || null,
+    title: row?.title || "1:1 Meeting",
+    summary: row?.summary || "",
+  }));
+
+  return {
+    totalPastMeetings: past.length,
+    lastMeetingAt: past[0]?.meetingAt || past[0]?.updatedAt || null,
+    recentMeetings,
+  };
+}
+
+async function buildParticipantBriefInsight({ employeeEmail, meetingAt }) {
+  const email = String(employeeEmail || "").trim().toLowerCase();
+  if (!email) {
+    return null;
+  }
+
+  const run = await enqueuePipelineRun({
+    employeeEmail: email,
+    reason: "upcoming-brief",
+    dataRoot: env.DATA_ROOT,
+    model: env.GROQ_MODEL,
+    meetingAt: meetingAt || null,
+  });
+
+  const [latest, meetings] = await Promise.all([
+    getLatestProfile(email),
+    listMeetings({ employeeEmail: email, limit: 30 }),
+  ]);
+
+  const pastMeetingInsights = buildPastMeetingInsights(meetings, meetingAt);
+
+  if (!latest) {
+    return {
+      employeeEmail: email,
+      status: "queued",
+      jobId: run.id,
+      brief: null,
+      relationshipStatus: null,
+      profileAnalysis: null,
+      pastMeetingInsights,
+    };
+  }
+
+  const analysis = latest.analysis || {};
+  return {
+    employeeEmail: email,
+    status: "ready",
+    jobId: run.id,
+    brief: analysis.brief || null,
+    relationshipStatus: analysis.relationshipStatus || analysis?.brief?.relationshipStatus || null,
+    profileAnalysis: {
+      healthScore: Number(analysis?.health?.score || 0),
+      healthBand: analysis?.health?.band || "",
+      sentimentScore: Number(analysis?.sentiment?.score || 0),
+      sentimentTrend: analysis?.sentiment?.trend || "",
+      riskLevel: analysis?.retentionRisk?.level || "",
+      riskScore: Number(analysis?.retentionRisk?.score || 0),
+    },
+    pastMeetingInsights,
+  };
+}
 
 app.get("/health", (_req, res) => {
   res.json({
@@ -74,6 +182,68 @@ app.get("/health", (_req, res) => {
     at: new Date().toISOString(),
     groqDispatcher: getGroqDispatcherInfo(),
   });
+});
+
+app.get("/ingestion/source-check", async (req, res) => {
+  try {
+    const parsed = sourceCheckSchema.parse(req.query || {});
+    const employeeEmail = String(parsed.employeeEmail || "").toLowerCase();
+    const historicalMode = Boolean(parsed.historicalMode);
+
+    const cursorsBefore = await getSyncState(employeeEmail);
+    const databaseCandidate = await getDatabaseMeetingSource(employeeEmail);
+    const sources = await fetchAllSourcesParallelWithDelta({
+      dataRoot: env.DATA_ROOT,
+      employeeEmail,
+      cursors: cursorsBefore,
+      historicalMode,
+      injectedSlackEvent: null,
+    });
+
+    const meet = sources?.meet || {};
+    const transcript = Array.isArray(meet?.transcript) ? meet.transcript : [];
+    const slackCount = Object.values(sources?.slack || {}).reduce((total, value) => {
+      if (!Array.isArray(value)) return total;
+      return total + value.length;
+    }, 0);
+
+    return res.json({
+      ok: true,
+      data: {
+        employeeEmail,
+        historicalMode,
+        dataRoot: env.DATA_ROOT,
+        source: {
+          type: meet?.source || "fallback",
+          sourceSystem: meet?.sourceSystem || "mock",
+          documentType: meet?.documentType || null,
+          documentId: meet?.documentId || null,
+        },
+        databaseCandidate: {
+          found: Boolean(databaseCandidate),
+          sourceSystem: databaseCandidate?.sourceSystem || null,
+          documentType: databaseCandidate?.documentType || null,
+          documentId: databaseCandidate?.documentId || null,
+          transcriptCount: Array.isArray(databaseCandidate?.transcript) ? databaseCandidate.transcript.length : 0,
+        },
+        transcript: {
+          count: transcript.length,
+          sample: transcript.slice(0, 2),
+        },
+        deltas: {
+          slackMessages: slackCount,
+          meetingTurns: transcript.length,
+        },
+        cursors: {
+          before: cursorsBefore,
+          after: sources?.cursors || {},
+        },
+        fetchedAt: sources?.fetchedAt || new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "source check failed" });
+  }
 });
 
 app.get("/employees", async (_req, res) => {
@@ -254,28 +424,43 @@ app.get("/meetings/:id/transcript", async (req, res) => {
 app.post("/briefs/upcoming", async (req, res) => {
   try {
     const parsed = upcomingBriefSchema.parse(req.body || {});
-    const run = await enqueuePipelineRun({
-      employeeEmail: parsed.employeeEmail,
-      reason: "upcoming-brief",
-      dataRoot: env.DATA_ROOT,
-      model: env.GROQ_MODEL,
-      meetingAt: parsed.meetingAt || null,
-    });
+    const primaryEmail = parsed.employeeEmail.toLowerCase();
+    const participantEmails = normalizeEmailList([primaryEmail, ...(parsed.participantEmails || [])]);
 
-    const latest = await getLatestProfile(parsed.employeeEmail.toLowerCase());
-    if (!latest) {
-      return res.status(202).json({ accepted: true, jobId: run.id, message: "brief generation queued" });
+    const participantInsights = (
+      await Promise.all(
+        participantEmails.map((email) =>
+          buildParticipantBriefInsight({
+            employeeEmail: email,
+            meetingAt: parsed.meetingAt || null,
+          })
+        )
+      )
+    ).filter(Boolean);
+
+    const primary = participantInsights.find((item) => item.employeeEmail === primaryEmail) || null;
+    if (!primary || primary.status !== "ready" || !primary.brief) {
+      return res.status(202).json({
+        accepted: true,
+        jobId: primary?.jobId || null,
+        employeeEmail: primaryEmail,
+        message: "brief generation queued",
+        participantInsights,
+      });
     }
 
     return res.status(202).json({
       accepted: true,
-      jobId: run.id,
-      employeeEmail: parsed.employeeEmail.toLowerCase(),
-      brief: latest?.analysis?.brief || null,
-      relationshipStatus: latest?.analysis?.relationshipStatus || null,
+      jobId: primary.jobId,
+      employeeEmail: primaryEmail,
+      brief: primary.brief,
+      relationshipStatus: primary.relationshipStatus,
+      pastMeetingInsights: primary.pastMeetingInsights,
+      profileAnalysis: primary.profileAnalysis,
+      participantInsights,
       guidance: {
-        conversationStarters: latest?.analysis?.brief?.conversationStarters || [],
-        recommendedTone: latest?.analysis?.brief?.recommendedTone || "supportive and direct",
+        conversationStarters: primary?.brief?.conversationStarters || [],
+        recommendedTone: primary?.brief?.recommendedTone || "supportive and direct",
       },
     });
   } catch (error) {

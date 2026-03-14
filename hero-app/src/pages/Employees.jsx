@@ -3,6 +3,41 @@ import { RefreshCw, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { listEmployees, refreshEmployeePipeline } from "../lib/api";
 
+const REFRESH_POLL_INTERVAL_MS = 2500;
+const REFRESH_POLL_MAX_ATTEMPTS = 12;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function toTime(value) {
+  const timestamp = new Date(value || "").getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function buildRefreshFingerprint(person) {
+  return [
+    String(person?.updatedAt || ""),
+    String(person?.lastMeeting || ""),
+    String(person?.totalMeetings || 0),
+    String(person?.risk || ""),
+    String(person?.sentiment || ""),
+    String(Math.round(Number(person?.score || 0))),
+  ].join("|");
+}
+
+function hasEmployeeRefreshed(before, after) {
+  if (!after) return false;
+
+  const beforeUpdatedAt = toTime(before?.updatedAt);
+  const afterUpdatedAt = toTime(after?.updatedAt);
+  if (afterUpdatedAt > beforeUpdatedAt) {
+    return true;
+  }
+
+  return buildRefreshFingerprint(before) !== buildRefreshFingerprint(after);
+}
+
 export function Employees() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
@@ -11,6 +46,7 @@ export function Employees() {
   const [error, setError] = useState("");
   const [refreshNotice, setRefreshNotice] = useState("");
   const [refreshingByEmail, setRefreshingByEmail] = useState({});
+  const [refreshStatusByEmail, setRefreshStatusByEmail] = useState({});
 
   const loadEmployees = useCallback(async ({ withLoader = true } = {}) => {
     try {
@@ -27,13 +63,27 @@ export function Employees() {
   }, []);
 
   useEffect(() => {
-    let isMounted = true;
-
     loadEmployees();
-    return () => {
-      isMounted = false;
-    };
   }, [loadEmployees]);
+
+  const setRefreshStatus = useCallback((email, status) => {
+    setRefreshStatusByEmail((prev) => ({ ...prev, [email]: status }));
+  }, []);
+
+  async function pollEmployeeRefresh(email, beforeSnapshot) {
+    for (let attempt = 0; attempt < REFRESH_POLL_MAX_ATTEMPTS; attempt += 1) {
+      await sleep(REFRESH_POLL_INTERVAL_MS);
+      const rows = await listEmployees();
+      setEmployees(rows);
+
+      const latest = rows.find((item) => String(item?.email || "").toLowerCase() === email);
+      if (hasEmployeeRefreshed(beforeSnapshot, latest)) {
+        return { updated: true, latest };
+      }
+    }
+
+    return { updated: false, latest: null };
+  }
 
   async function handleRefreshEmployee(person) {
     const email = String(person?.email || "").toLowerCase();
@@ -41,18 +91,51 @@ export function Employees() {
       return;
     }
 
+    const baseline = employees.find((item) => String(item?.email || "").toLowerCase() === email) || person;
+
+    setError("");
     setRefreshNotice("");
     setRefreshingByEmail((prev) => ({ ...prev, [email]: true }));
+    setRefreshStatus(email, "starting");
+    setRefreshNotice(`Starting refresh for ${person.name || email}...`);
 
     try {
       await refreshEmployeePipeline(email, "manual-refresh");
-      setRefreshNotice(`Refresh queued for ${person.name || email}.`);
-      await loadEmployees({ withLoader: false });
+      setRefreshStatus(email, "polling");
+      setRefreshNotice(`Refresh accepted for ${person.name || email}. Checking for updated AI summary...`);
+
+      const pollResult = await pollEmployeeRefresh(email, baseline);
+      if (pollResult.updated) {
+        setRefreshStatus(email, "updated");
+        setRefreshNotice(`AI summary updated for ${person.name || email}.`);
+      } else {
+        setRefreshStatus(email, "queued");
+        setRefreshNotice(`Refresh is still processing for ${person.name || email}. It remains queued in the background.`);
+      }
     } catch (err) {
+      setRefreshStatus(email, "error");
       setError(err?.message || "Unable to trigger refresh for employee");
     } finally {
       setRefreshingByEmail((prev) => ({ ...prev, [email]: false }));
+
+      setTimeout(() => {
+        setRefreshStatusByEmail((prev) => {
+          const next = { ...prev };
+          delete next[email];
+          return next;
+        });
+      }, 3500);
     }
+  }
+
+  function getRefreshButtonLabel(email) {
+    const status = refreshStatusByEmail[email];
+    if (status === "starting") return "Starting...";
+    if (status === "polling") return "Checking...";
+    if (status === "updated") return "Updated";
+    if (status === "queued") return "Queued";
+    if (status === "error") return "Retry";
+    return "Refresh";
   }
 
   const filteredEmployees = employees.filter((emp) => {
@@ -166,7 +249,7 @@ export function Employees() {
                       <RefreshCw
                         className={`w-3.5 h-3.5 ${Boolean(refreshingByEmail[String(person.email).toLowerCase()]) ? "animate-spin" : ""}`}
                       />
-                      {Boolean(refreshingByEmail[String(person.email).toLowerCase()]) ? "Refreshing..." : "Refresh"}
+                      {getRefreshButtonLabel(String(person.email || "").toLowerCase())}
                     </button>
                   </td>
                 </tr>

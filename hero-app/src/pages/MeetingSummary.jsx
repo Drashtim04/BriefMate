@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Calendar as CalendarIcon, Clock, Users, ArrowRight, Lightbulb, CheckCircle2, ChevronLeft, ChevronRight, Loader2, ShieldAlert } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { getMeetingTranscript, getUpcomingBrief, listMeetings } from "../lib/api";
+import { getMeetingTranscript, getUpcomingBrief, listMeetings, refreshGoogleCalendarMeetings } from "../lib/api";
 
 // ---------- Mini Calendar ----------
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -113,6 +113,75 @@ export function MeetingSummary() {
   const [error, setError] = useState("");
   const [isBriefLoading, setIsBriefLoading] = useState(false);
   const [briefNotice, setBriefNotice] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [sortMode, setSortMode] = useState("logical");
+
+  function toMeetingMillis(meetingAt) {
+    const text = String(meetingAt || "").trim();
+    if (!text) return 0;
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+      const endOfDay = new Date(`${text}T23:59:59`);
+      const ts = endOfDay.getTime();
+      return Number.isFinite(ts) ? ts : 0;
+    }
+
+    const ts = new Date(text).getTime();
+    return Number.isFinite(ts) ? ts : 0;
+  }
+
+  function getMeetingStatus(meetingAt) {
+    const ts = toMeetingMillis(meetingAt);
+    if (!ts) return "unknown";
+    return ts >= Date.now() ? "upcoming" : "past";
+  }
+
+  const filteredMeetings = useMemo(() => {
+    const rows = meetings
+      .map((meeting) => ({
+        ...meeting,
+        status: getMeetingStatus(meeting.meetingAt),
+      }))
+      .filter((meeting) => {
+        if (statusFilter !== "all" && meeting.status !== statusFilter) return false;
+        if (sourceFilter !== "all" && meeting.source !== sourceFilter) return false;
+        return true;
+      });
+
+    rows.sort((a, b) => {
+      const aTs = toMeetingMillis(a.meetingAt);
+      const bTs = toMeetingMillis(b.meetingAt);
+
+      if (sortMode === "date-asc") {
+        return aTs - bTs;
+      }
+
+      if (sortMode === "date-desc") {
+        return bTs - aTs;
+      }
+
+      // Logical order: upcoming first (soonest first), then past (most recent first).
+      const aUpcoming = a.status === "upcoming";
+      const bUpcoming = b.status === "upcoming";
+      if (aUpcoming && !bUpcoming) return -1;
+      if (!aUpcoming && bUpcoming) return 1;
+      if (aUpcoming && bUpcoming) return aTs - bTs;
+      return bTs - aTs;
+    });
+
+    return rows;
+  }, [meetings, sourceFilter, sortMode, statusFilter]);
+
+  const meetingStats = useMemo(() => {
+    const stats = { all: meetings.length, upcoming: 0, past: 0 };
+    meetings.forEach((meeting) => {
+      const status = getMeetingStatus(meeting.meetingAt);
+      if (status === "upcoming") stats.upcoming += 1;
+      if (status === "past") stats.past += 1;
+    });
+    return stats;
+  }, [meetings]);
 
   useEffect(() => {
     let isMounted = true;
@@ -138,11 +207,33 @@ export function MeetingSummary() {
       return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
     }
 
+    function toSourceLabel(sourceText) {
+      const source = String(sourceText || "").toLowerCase();
+      if (source === "google_calendar") return "Google Calendar";
+      return "Intelligence";
+    }
+
     async function loadMeetings() {
       try {
         setIsLoading(true);
         setError("");
-        const rows = await listMeetings({ limit: 30 });
+
+        let rows = [];
+        try {
+          const refreshed = await refreshGoogleCalendarMeetings({
+            pastDays: 1,
+            futureDays: 14,
+            limit: 30,
+          });
+          rows = Array.isArray(refreshed?.data) ? refreshed.data : [];
+        } catch (_refreshErr) {
+          rows = [];
+        }
+
+        if (!rows.length) {
+          rows = await listMeetings({ limit: 30 });
+        }
+
         if (!isMounted) return;
 
         const mapped = rows
@@ -154,6 +245,7 @@ export function MeetingSummary() {
               id: row.meetingId,
               employeeEmail: participantEmail,
               empName: formatNameFromEmail(participantEmail),
+              participants: Array.isArray(row.participants) ? row.participants : [],
               dept: "",
               meetingAt: at,
               date: at ? String(at).slice(0, 10) : "",
@@ -168,6 +260,8 @@ export function MeetingSummary() {
               },
               suggestions: [],
               brief: null,
+              source: String(row.source || "llm").toLowerCase(),
+              sourceLabel: toSourceLabel(row.source),
             };
           })
           .filter((row) => row.id);
@@ -197,6 +291,21 @@ export function MeetingSummary() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!filteredMeetings.length) {
+      setSelectedMeeting(null);
+      return;
+    }
+
+    const stillVisible = selectedMeeting
+      ? filteredMeetings.some((meeting) => meeting.id === selectedMeeting.id)
+      : false;
+
+    if (!stillVisible) {
+      setSelectedMeeting(filteredMeetings[0]);
+    }
+  }, [filteredMeetings, selectedMeeting]);
 
   useEffect(() => {
     let isMounted = true;
@@ -277,13 +386,26 @@ export function MeetingSummary() {
       setBriefNotice("");
 
       try {
+        const participantEmails = Array.isArray(selectedMeeting?.participants)
+          ? selectedMeeting.participants
+              .map((item) => (typeof item === "string" ? item : item?.email || ""))
+              .map((value) => String(value || "").trim().toLowerCase())
+              .filter((value) => value.includes("@"))
+          : [];
+
         const response = await getUpcomingBrief(
           selectedMeeting.employeeEmail,
-          selectedMeeting.meetingAt || undefined
+          selectedMeeting.meetingAt || undefined,
+          participantEmails
         );
         if (!isMounted) return;
 
         const brief = response?.brief || response?.data?.brief || null;
+        const participantInsights = Array.isArray(response?.participantInsights)
+          ? response.participantInsights
+          : Array.isArray(response?.data?.participantInsights)
+            ? response.data.participantInsights
+            : [];
         const message = response?.message || response?.data?.message || "";
         const relationshipStatus =
           response?.relationshipStatus ||
@@ -292,6 +414,16 @@ export function MeetingSummary() {
           "";
 
         if (!brief) {
+          setSelectedMeeting((prev) => {
+            if (!prev || prev.id !== meetingId) return prev;
+            return {
+              ...prev,
+              brief: {
+                ...(prev.brief || {}),
+                participantInsights,
+              },
+            };
+          });
           setBriefNotice(message || "Brief generation was queued. Select this meeting again after a short delay.");
           return;
         }
@@ -313,6 +445,7 @@ export function MeetingSummary() {
               healthBand: brief?.healthBand || "",
               recommendedTone: brief?.recommendedTone || "",
               relationshipStatus,
+              participantInsights,
             },
           };
         });
@@ -353,13 +486,61 @@ export function MeetingSummary() {
           <div className="p-4 border-b border-[#dbe5e8] bg-[linear-gradient(180deg,#f5fafb_0%,#edf5f7_100%)] font-semibold text-gray-700 flex items-center text-sm">
             <CalendarIcon className="w-4 h-4 mr-2 text-[#1f7a6c]" /> Calendar
           </div>
+          <div className="px-4 pt-3 pb-2 border-b border-gray-100 space-y-2">
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                onClick={() => setStatusFilter("all")}
+                className={`text-[11px] px-2 py-1 rounded-md font-medium ${
+                  statusFilter === "all" ? "bg-[#1f7a6c] text-white" : "bg-gray-100 text-gray-600"
+                }`}
+              >
+                All ({meetingStats.all})
+              </button>
+              <button
+                onClick={() => setStatusFilter("upcoming")}
+                className={`text-[11px] px-2 py-1 rounded-md font-medium ${
+                  statusFilter === "upcoming" ? "bg-[#0f766e] text-white" : "bg-[#e6fffb] text-[#0f766e]"
+                }`}
+              >
+                Upcoming ({meetingStats.upcoming})
+              </button>
+              <button
+                onClick={() => setStatusFilter("past")}
+                className={`text-[11px] px-2 py-1 rounded-md font-medium ${
+                  statusFilter === "past" ? "bg-[#7c2d12] text-white" : "bg-[#fff7ed] text-[#7c2d12]"
+                }`}
+              >
+                Past ({meetingStats.past})
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
+                className="text-xs border border-gray-200 rounded-md px-2 py-1.5 bg-white text-gray-700"
+              >
+                <option value="all">All sources</option>
+                <option value="google_calendar">Google Calendar</option>
+                <option value="llm">Intelligence</option>
+              </select>
+              <select
+                value={sortMode}
+                onChange={(e) => setSortMode(e.target.value)}
+                className="text-xs border border-gray-200 rounded-md px-2 py-1.5 bg-white text-gray-700"
+              >
+                <option value="logical">Logical order</option>
+                <option value="date-asc">Date ascending</option>
+                <option value="date-desc">Date descending</option>
+              </select>
+            </div>
+          </div>
           <div className="p-4">
-            <MiniCalendar meetings={meetings} onSelectMeeting={setSelectedMeeting} />
+            <MiniCalendar meetings={filteredMeetings} onSelectMeeting={setSelectedMeeting} />
           </div>
 
           {/* Scrollable meeting cards below the calendar */}
           <div className="border-t border-gray-100 overflow-y-auto flex-1 p-2 space-y-1.5">
-            {meetings.map((m) => (
+            {filteredMeetings.map((m) => (
               <button
                 key={m.id}
                 onClick={() => setSelectedMeeting(m)}
@@ -373,12 +554,30 @@ export function MeetingSummary() {
                 <div className="text-xs text-gray-400 mt-0.5 flex items-center">
                   <Clock className="w-3 h-3 mr-1" /> {m.displayDate} · {m.time}
                 </div>
-                <div className="mt-1.5 inline-flex bg-gray-100 text-gray-700 text-[10px] px-2 py-0.5 rounded font-medium">
-                  {m.type}
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  <div
+                    className={`inline-flex text-[10px] px-2 py-0.5 rounded font-semibold ${
+                      m.status === "upcoming" ? "bg-[#e6fffb] text-[#0f766e]" : "bg-[#fff7ed] text-[#7c2d12]"
+                    }`}
+                  >
+                    {m.status === "upcoming" ? "Upcoming" : "Past"}
+                  </div>
+                  <div className="inline-flex bg-gray-100 text-gray-700 text-[10px] px-2 py-0.5 rounded font-medium">
+                    {m.type}
+                  </div>
+                  <div
+                    className={`inline-flex text-[10px] px-2 py-0.5 rounded font-medium ${
+                      m.source === "google_calendar"
+                        ? "bg-[#d9f0ff] text-[#0c4a6e]"
+                        : "bg-[#e8f7f1] text-[#165a50]"
+                    }`}
+                  >
+                    {m.sourceLabel}
+                  </div>
                 </div>
               </button>
             ))}
-            {meetings.length === 0 && (
+            {filteredMeetings.length === 0 && (
               <div className="px-3 py-6 text-center text-sm text-gray-500">No meetings available.</div>
             )}
           </div>
@@ -405,6 +604,28 @@ export function MeetingSummary() {
             <h2 className="text-lg font-bold text-[#1f2937]">
               {selectedMeeting.empName} — {selectedMeeting.type}
             </h2>
+            <div className="mt-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={`inline-flex text-[11px] px-2.5 py-1 rounded-md font-semibold ${
+                    selectedMeeting.source === "google_calendar"
+                      ? "bg-[#d9f0ff] text-[#0c4a6e]"
+                      : "bg-[#e8f7f1] text-[#165a50]"
+                  }`}
+                >
+                  Source: {selectedMeeting.sourceLabel || "Intelligence"}
+                </span>
+                <span
+                  className={`inline-flex text-[11px] px-2.5 py-1 rounded-md font-semibold ${
+                    getMeetingStatus(selectedMeeting.meetingAt) === "upcoming"
+                      ? "bg-[#e6fffb] text-[#0f766e]"
+                      : "bg-[#fff7ed] text-[#7c2d12]"
+                  }`}
+                >
+                  {getMeetingStatus(selectedMeeting.meetingAt) === "upcoming" ? "Upcoming" : "Past"}
+                </span>
+              </div>
+            </div>
             <div className="flex gap-4 mt-1 text-gray-500 text-sm">
               <span className="flex items-center"><Users className="w-4 h-4 mr-1" />{selectedMeeting.dept}</span>
               <span className="flex items-center"><CalendarIcon className="w-4 h-4 mr-1" />{selectedMeeting.displayDate} · {selectedMeeting.time}</span>
@@ -443,6 +664,45 @@ export function MeetingSummary() {
                   <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
                     <div className="text-amber-700 inline-flex items-center gap-1"><ShieldAlert className="w-3.5 h-3.5" /> Relationship Status</div>
                     <div className="font-semibold text-amber-800">{selectedMeeting.brief.relationshipStatus || "Stable"}</div>
+                  </div>
+                </div>
+              )}
+
+              {Array.isArray(selectedMeeting?.brief?.participantInsights) && selectedMeeting.brief.participantInsights.length > 0 && (
+                <div className="mb-4">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                    Participant AI + Past Meeting Insights
+                  </h4>
+                  <div className="space-y-2">
+                    {selectedMeeting.brief.participantInsights.map((insight, idx) => {
+                      const recentMeetings = Array.isArray(insight?.pastMeetingInsights?.recentMeetings)
+                        ? insight.pastMeetingInsights.recentMeetings
+                        : [];
+
+                      return (
+                        <div key={insight?.employeeEmail || `participant-${idx}`} className="rounded-md border border-gray-200 bg-white px-3 py-2">
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                            <span className="font-semibold text-[#1f2937]">{insight?.employeeEmail || "Unknown"}</span>
+                            <span className="text-gray-500">Health: {insight?.profileAnalysis?.healthScore ?? "-"}</span>
+                            <span className="text-gray-500">Risk: {insight?.profileAnalysis?.riskLevel || "-"}</span>
+                            <span className="text-gray-500">Sentiment: {insight?.profileAnalysis?.sentimentScore ?? "-"}</span>
+                            <span className="text-gray-500">
+                              Past meetings: {insight?.pastMeetingInsights?.totalPastMeetings ?? 0}
+                            </span>
+                          </div>
+                          {recentMeetings.length > 0 && (
+                            <ul className="mt-2 space-y-1 text-xs text-gray-600 list-disc pl-4">
+                              {recentMeetings.map((meeting) => (
+                                <li key={meeting?.meetingId || `${insight?.employeeEmail}-${meeting?.meetingAt}`}>
+                                  {meeting?.meetingAt ? `${meeting.meetingAt} - ` : ""}
+                                  {meeting?.summary || meeting?.title || "Past meeting summary unavailable"}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

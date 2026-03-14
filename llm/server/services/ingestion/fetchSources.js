@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { getDatabaseMeetingSource } from "../storage/stores.js";
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf-8"));
@@ -70,6 +71,33 @@ async function fetchMeetTranscriptMock(dataRoot) {
   return readJson(path.join(dataRoot, "meeting_transcript.json"));
 }
 
+function selectMeetingForEmployee(meet, employeeEmail) {
+  if (!Array.isArray(meet?.meetings)) {
+    return meet;
+  }
+
+  const targetEmail = String(employeeEmail || "").toLowerCase();
+  const chosen = targetEmail
+    ? meet.meetings.find((row) => String(row?.employeeEmail || "").toLowerCase() === targetEmail)
+    : meet.meetings[0];
+
+  return chosen || { transcript: [] };
+}
+
+async function resolveMeetingSource({ meet, employeeEmail }) {
+  const fallbackMeet = selectMeetingForEmployee(meet, employeeEmail) || { transcript: [] };
+  try {
+    const dbMeet = await getDatabaseMeetingSource(employeeEmail);
+    if (Array.isArray(dbMeet?.transcript) && dbMeet.transcript.length > 0) {
+      return dbMeet;
+    }
+  } catch {
+    // Fall back to current source if database transcript bridge is unavailable.
+  }
+
+  return fallbackMeet;
+}
+
 async function fetchBambooHrMock(dataRoot, employeeEmail) {
   const payload = readJson(path.join(dataRoot, "bamboohr_data.json"));
   const targetEmail = String(employeeEmail || "").toLowerCase();
@@ -134,9 +162,11 @@ async function fetchAllSourcesParallel({ dataRoot, employeeEmail }) {
     fetchBambooHrMock(dataRoot, employeeEmail),
   ]);
 
+  const selectedMeet = await resolveMeetingSource({ meet, employeeEmail });
+
   return {
     slack,
-    meet,
+    meet: selectedMeet,
     hrms,
     fetchedAt: new Date().toISOString(),
   };
@@ -242,14 +272,7 @@ async function fetchAllSourcesParallelWithDelta({
     fetchBambooHrMock(dataRoot, employeeEmail),
   ]);
 
-  let selectedMeet = meet;
-  if (Array.isArray(meet?.meetings)) {
-    const targetEmail = String(employeeEmail || "").toLowerCase();
-    const chosen = targetEmail
-      ? meet.meetings.find((row) => String(row?.employeeEmail || "").toLowerCase() === targetEmail)
-      : meet.meetings[0];
-    selectedMeet = chosen || { transcript: [] };
-  }
+  const selectedMeet = await resolveMeetingSource({ meet, employeeEmail });
 
   const mergedSlack = mergeInjectedSlackEvent(slack, injectedSlackEvent);
   const slackDelta = applySlackDelta(mergedSlack, cursors.slackCursor, historicalMode);

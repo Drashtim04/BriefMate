@@ -508,6 +508,340 @@ async function saveMeetingRecord(meetingDoc) {
   return mongoDb.collection("meetings").findOne({ meetingId: meetingDoc.meetingId });
 }
 
+function toLowerEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function toIsoMeetingDate(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return text;
+  }
+
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  return parsed.toISOString().slice(0, 10);
+}
+
+function normalizeTranscriptArray(items = []) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .map((item) => {
+      if (!item) {
+        return null;
+      }
+
+      if (typeof item === "string") {
+        const text = item.trim();
+        if (!text) return null;
+        const match = text.match(/^([^:]{1,60}):\s*(.+)$/);
+        return {
+          speaker: match?.[1]?.trim() || "Participant",
+          text: match?.[2]?.trim() || text,
+        };
+      }
+
+      const text = String(item.text || item.message || item.content || "").trim();
+      if (!text) return null;
+
+      return {
+        speaker: String(item.speaker || item.role || item.name || "Participant"),
+        text,
+        timestamp: item.timestamp || item.ts || item.time || null,
+      };
+    })
+    .filter(Boolean);
+}
+
+function normalizeParticipants(participants = []) {
+  const out = [];
+  const seen = new Set();
+
+  const pushOne = (item) => {
+    if (!item) return;
+
+    if (typeof item === "string") {
+      const email = toLowerEmail(item);
+      if (!email) return;
+      const key = `email:${email}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push({ email, name: email.split("@")[0], role: "Participant" });
+      return;
+    }
+
+    const email = toLowerEmail(item.email || item.workEmail || item.userEmail || item.employeeEmail);
+    const name = String(item.name || item.displayName || item.fullName || "").trim();
+    const role = String(item.role || item.type || "Participant").trim() || "Participant";
+    const identity = email ? `email:${email}` : `name:${name.toLowerCase()}`;
+
+    if (!email && !name) return;
+    if (seen.has(identity)) return;
+    seen.add(identity);
+
+    out.push({
+      email: email || "",
+      name: name || (email ? email.split("@")[0] : "Participant"),
+      role,
+    });
+  };
+
+  participants.forEach(pushOne);
+  return out;
+}
+
+function collectDocumentParticipants(doc = {}) {
+  return normalizeParticipants([
+    ...(Array.isArray(doc?.raw?.attendees) ? doc.raw.attendees : []),
+    ...(Array.isArray(doc?.raw?.participants) ? doc.raw.participants : []),
+    ...(Array.isArray(doc?.metadata?.attendees) ? doc.metadata.attendees : []),
+    ...(Array.isArray(doc?.metadata?.participants) ? doc.metadata.participants : []),
+    doc?.raw?.organizer,
+    doc?.metadata?.organizer,
+  ]);
+}
+
+function collectDocumentEmails(doc = {}, participants = []) {
+  const out = new Set();
+  const add = (value) => {
+    const email = toLowerEmail(value);
+    if (email && email.includes("@")) {
+      out.add(email);
+    }
+  };
+
+  add(doc?.metadata?.employeeEmail);
+  add(doc?.raw?.employeeEmail);
+  add(doc?.metadata?.organizer?.email);
+  add(doc?.raw?.organizer?.email);
+  add(doc?.raw?.creator?.email);
+
+  participants.forEach((participant) => add(participant?.email));
+  return Array.from(out);
+}
+
+function extractMeetingTimeFromDocument(doc = {}) {
+  const candidates = [
+    doc?.metadata?.meetingAt,
+    doc?.metadata?.startAt,
+    doc?.metadata?.start?.dateTime,
+    doc?.metadata?.start?.date,
+    doc?.raw?.meetingAt,
+    doc?.raw?.start?.dateTime,
+    doc?.raw?.start?.date,
+    doc?.raw?.date,
+    doc?.ingestedAt,
+    doc?.createdAt,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const text = String(candidate).trim();
+    if (!text) continue;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+      return text;
+    }
+    const parsed = new Date(text);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+
+  return new Date().toISOString();
+}
+
+function extractMeetingTitleFromDocument(doc = {}) {
+  const candidates = [
+    doc?.metadata?.title,
+    doc?.metadata?.summary,
+    doc?.raw?.title,
+    doc?.raw?.summary,
+    doc?.content,
+  ];
+
+  for (const candidate of candidates) {
+    const text = String(candidate || "").trim();
+    if (text) {
+      return text.slice(0, 180);
+    }
+  }
+
+  return "1:1 Meeting";
+}
+
+function parseTranscriptFromText(content = "") {
+  const lines = String(content || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return lines.map((line) => {
+    const match = line.match(/^([^:]{1,60}):\s*(.+)$/);
+    return {
+      speaker: match?.[1]?.trim() || "Participant",
+      text: match?.[2]?.trim() || line,
+    };
+  });
+}
+
+async function loadTranscriptFromChunks(documentId) {
+  if (!isMongoReady() || !documentId) {
+    return [];
+  }
+
+  const chunks = await mongoDb
+    .collection("document_chunks")
+    .find({ documentId })
+    .sort({ chunkIndex: 1 })
+    .limit(400)
+    .toArray();
+
+  const lines = [];
+  chunks.forEach((chunk) => {
+    const parsed = parseTranscriptFromText(chunk?.text || "");
+    lines.push(...parsed);
+  });
+
+  return lines;
+}
+
+function buildKeyTakeaways({ doc, transcript }) {
+  const fromMeta = Array.isArray(doc?.metadata?.keyTakeaways)
+    ? doc.metadata.keyTakeaways
+    : Array.isArray(doc?.metadata?.key_takeaways)
+      ? doc.metadata.key_takeaways
+      : Array.isArray(doc?.raw?.key_takeaways)
+        ? doc.raw.key_takeaways
+        : [];
+
+  if (fromMeta.length > 0) {
+    return fromMeta.slice(0, 5).map((item) => String(item || "").trim()).filter(Boolean);
+  }
+
+  return transcript
+    .slice(0, 3)
+    .map((item) => String(item?.text || "").trim())
+    .filter(Boolean)
+    .map((text) => (text.length > 180 ? `${text.slice(0, 177)}...` : text));
+}
+
+async function getDatabaseMeetingSource(employeeEmail) {
+  if (!isMongoReady()) {
+    return null;
+  }
+
+  const targetEmail = toLowerEmail(employeeEmail);
+  const docs = await mongoDb
+    .collection("documents")
+    .find(
+      {
+        documentType: {
+          $in: ["meeting_transcript", "transcript", "meeting_notes", "zoom_recording_audio"],
+        },
+      },
+      {
+        projection: {
+          sourceSystem: 1,
+          documentType: 1,
+          content: 1,
+          metadata: 1,
+          raw: 1,
+          ingestedAt: 1,
+          createdAt: 1,
+        },
+      }
+    )
+    .sort({ ingestedAt: -1, createdAt: -1 })
+    .limit(150)
+    .toArray();
+
+  if (docs.length === 0) {
+    return null;
+  }
+
+  const ranked = docs
+    .map((doc, index) => {
+      const participants = collectDocumentParticipants(doc);
+      const emails = collectDocumentEmails(doc, participants);
+      const transcriptHint =
+        Array.isArray(doc?.raw?.transcript) ||
+        Array.isArray(doc?.metadata?.transcript) ||
+        (typeof doc?.content === "string" && doc.content.trim().length > 0);
+
+      let score = 0;
+      if (targetEmail) {
+        if (toLowerEmail(doc?.metadata?.employeeEmail) === targetEmail) score += 120;
+        if (toLowerEmail(doc?.raw?.employeeEmail) === targetEmail) score += 120;
+        if (emails.includes(targetEmail)) score += 80;
+      }
+      if (transcriptHint) score += 20;
+
+      return { doc, participants, emails, score, index };
+    })
+    .filter((item) => {
+      if (!targetEmail) return true;
+      return item.score > 0;
+    })
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.index - b.index;
+    });
+
+  if (ranked.length === 0) {
+    return null;
+  }
+
+  const chosen = ranked[0];
+  const doc = chosen.doc;
+
+  let transcript = normalizeTranscriptArray(doc?.raw?.transcript || doc?.metadata?.transcript || []);
+  if (transcript.length === 0) {
+    transcript = parseTranscriptFromText(doc?.content || "");
+  }
+  if (transcript.length === 0) {
+    transcript = await loadTranscriptFromChunks(doc?._id);
+  }
+
+  if (transcript.length === 0) {
+    return null;
+  }
+
+  const meetingAt = extractMeetingTimeFromDocument(doc);
+  const attendees = chosen.participants.length
+    ? chosen.participants
+    : targetEmail
+      ? [{ email: targetEmail, name: targetEmail.split("@")[0], role: "Participant" }]
+      : [];
+
+  return {
+    meeting_brief: {
+      date: toIsoMeetingDate(meetingAt),
+      previous_meeting: extractMeetingTitleFromDocument(doc),
+      attendees: attendees.map((item) => ({
+        name: item?.name || (item?.email ? item.email.split("@")[0] : "Participant"),
+        role: item?.role || "Participant",
+        email: item?.email || undefined,
+      })),
+      key_takeaways: buildKeyTakeaways({ doc, transcript }),
+    },
+    transcript,
+    source: "database",
+    sourceSystem: doc?.sourceSystem || "unknown",
+    documentType: doc?.documentType || "unknown",
+    documentId: doc?._id ? String(doc._id) : "",
+  };
+}
+
 function toMeetingTime(value) {
   const time = new Date(value || 0).getTime();
   return Number.isFinite(time) ? time : 0;
@@ -784,6 +1118,7 @@ export {
   saveAlerts,
   saveRawDataSnapshot,
   saveMeetingRecord,
+  getDatabaseMeetingSource,
   getEmployeeMeetingStats,
   listMeetings,
   getMeetingById,

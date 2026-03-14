@@ -170,6 +170,7 @@ export async function listEmployees() {
       risk: titleCase(String(riskRaw)),
       sentiment: titleCase(String(sentimentRaw)),
       score: Number.isFinite(scoreCandidate) ? scoreCandidate : 0,
+      updatedAt: row?.updatedAt || "",
     };
   }).filter((row) => row.email || row.id);
 }
@@ -238,6 +239,31 @@ export async function listMeetings(params = {}) {
   return Array.isArray(payload?.data) ? payload.data : [];
 }
 
+export async function refreshGoogleCalendarMeetings(options = {}) {
+  const body = {};
+  if (options.calendarId) body.calendarId = options.calendarId;
+  if (options.pastDays !== undefined) body.pastDays = Number(options.pastDays);
+  if (options.futureDays !== undefined) body.futureDays = Number(options.futureDays);
+  if (options.maxResults !== undefined) body.maxResults = Number(options.maxResults);
+  if (options.employeeEmail) body.employeeEmail = options.employeeEmail;
+  if (options.q) body.q = options.q;
+  if (options.limit !== undefined) body.limit = Number(options.limit);
+
+  const payload = await request("/api/intelligence/meetings/refresh-google", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+  const meetings = payload?.data?.meetings || {};
+  return {
+    ingestion: payload?.data?.ingestion || null,
+    count: asNumber(meetings?.count, 0),
+    data: Array.isArray(meetings?.data) ? meetings.data : [],
+    sources: meetings?.sources || {},
+    partial: Boolean(meetings?.partial),
+  };
+}
+
 export async function getMeetingTranscript(meetingId, q = "") {
   const query = new URLSearchParams();
   if (q) query.set("q", q);
@@ -295,10 +321,24 @@ export async function getChatSessionHistory(sessionId, limit = 120) {
   };
 }
 
-export async function getUpcomingBrief(employeeEmail, meetingAt) {
+export async function getUpcomingBrief(employeeEmail, meetingAt, participantEmails = []) {
+  const normalizedParticipants = Array.isArray(participantEmails)
+    ? Array.from(
+        new Set(
+          participantEmails
+            .map((value) => String(value || "").trim().toLowerCase())
+            .filter((value) => value.includes("@"))
+        )
+      )
+    : [];
+
   return request("/api/intelligence/briefs/upcoming", {
     method: "POST",
-    body: JSON.stringify({ employeeEmail, meetingAt }),
+    body: JSON.stringify({
+      employeeEmail,
+      meetingAt,
+      participantEmails: normalizedParticipants,
+    }),
   });
 }
 
