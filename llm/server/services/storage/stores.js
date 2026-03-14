@@ -508,6 +508,207 @@ async function saveMeetingRecord(meetingDoc) {
   return mongoDb.collection("meetings").findOne({ meetingId: meetingDoc.meetingId });
 }
 
+function normalizeSlackTsDate(tsValue) {
+  const asNumber = Number(tsValue);
+  if (!Number.isFinite(asNumber) || asNumber <= 0) {
+    return null;
+  }
+  return new Date(Math.floor(asNumber * 1000));
+}
+
+function normalizeSlackText(value) {
+  return String(value || "").trim();
+}
+
+function buildSlackMemberLookup(members = []) {
+  const lookup = new Map();
+  if (!Array.isArray(members)) {
+    return lookup;
+  }
+
+  members.forEach((member) => {
+    const userId = String(member?.userId || member?.id || "").trim();
+    if (!userId) {
+      return;
+    }
+
+    lookup.set(userId, {
+      email: toLowerEmail(member?.email),
+      realName: String(member?.realName || member?.displayName || member?.name || "").trim() || null,
+    });
+  });
+
+  return lookup;
+}
+
+function collectSlackChannelEntries(payload = {}) {
+  return Object.entries(payload || {}).filter(([key, value]) => {
+    if (!Array.isArray(value)) {
+      return false;
+    }
+    return key !== "members" && key !== "summary";
+  });
+}
+
+async function removeLegacyMockSlackRows(orgId) {
+  if (!isMongoReady()) {
+    return;
+  }
+
+  await mongoDb.collection("slack_messages").deleteMany({
+    orgId,
+    $or: [
+      { channelId: { $in: ["general", "random", "hr_discussions"] } },
+      { messageKey: { $regex: "^hr_discussions:" } },
+    ],
+  });
+
+  await mongoDb.collection("documents").deleteMany({
+    orgId,
+    sourceSystem: "slack",
+    documentType: "slack_message",
+    $or: [
+      { externalId: { $regex: "^slack:message:general:" } },
+      { externalId: { $regex: "^slack:message:random:" } },
+      { externalId: { $regex: "^slack:message:hr_discussions:" } },
+    ],
+  });
+}
+
+async function upsertSlackMessagesBatch({ payload = {}, orgId = "demo", purgeLegacyMock = false } = {}) {
+  if (!isMongoReady()) {
+    return {
+      mode: "memory",
+      processed: 0,
+      upserted: 0,
+      documentsUpserted: 0,
+    };
+  }
+
+  const safeOrgId = String(orgId || "demo").trim() || "demo";
+  if (purgeLegacyMock) {
+    await removeLegacyMockSlackRows(safeOrgId);
+  }
+
+  const now = new Date();
+  const memberLookup = buildSlackMemberLookup(payload?.members);
+  const channelEntries = collectSlackChannelEntries(payload);
+
+  const messageOps = [];
+  const documentOps = [];
+  const seen = new Set();
+  let processed = 0;
+
+  channelEntries.forEach(([channelName, rows]) => {
+    rows.forEach((row) => {
+      const text = normalizeSlackText(row?.text);
+      const ts = String(row?.timestamp || row?.ts || "").trim();
+      const userId = String(row?.userId || row?.user || "").trim();
+
+      if (!text || !ts || !userId) {
+        return;
+      }
+
+      const channelId = String(row?.channelId || channelName).trim() || channelName;
+      const dedupeKey = `${channelId}:${ts}:${userId}`;
+      if (seen.has(dedupeKey)) {
+        return;
+      }
+      seen.add(dedupeKey);
+
+      const member = memberLookup.get(userId);
+      const employeeEmail = toLowerEmail(row?.employeeEmail) || member?.email || null;
+      const realName =
+        String(row?.realName || row?.displayName || "").trim() || member?.realName || null;
+      const tsDate = normalizeSlackTsDate(ts);
+      const threadTs = String(row?.threadTs || row?.thread_ts || "").trim() || null;
+      const reactions = Array.isArray(row?.reactions) ? row.reactions : [];
+      const externalId = `slack:message:${channelId}:${ts}`;
+
+      messageOps.push({
+        updateOne: {
+          filter: { orgId: safeOrgId, messageKey: dedupeKey },
+          update: {
+            $setOnInsert: {
+              orgId: safeOrgId,
+              messageKey: dedupeKey,
+              createdAt: now,
+            },
+            $set: {
+              employeeEmail,
+              channelId,
+              channelName,
+              ts,
+              tsDate,
+              text,
+              userId,
+              realName,
+              threadTs,
+              reactions,
+              updatedAt: now,
+            },
+          },
+          upsert: true,
+        },
+      });
+
+      documentOps.push({
+        updateOne: {
+          filter: { orgId: safeOrgId, sourceSystem: "slack", externalId },
+          update: {
+            $setOnInsert: {
+              orgId: safeOrgId,
+              documentType: "slack_message",
+              sourceSystem: "slack",
+              externalId,
+            },
+            $set: {
+              ingestedAt: now,
+              sensitivity: "standard",
+              content: text,
+              metadata: {
+                channelId,
+                channelName,
+                ts,
+                user: userId,
+                employeeEmail,
+                thread_ts: threadTs,
+                subtype: row?.subtype || null,
+                bot_id: row?.bot_id || null,
+              },
+              raw: {
+                ...row,
+                user: userId,
+                ts,
+                text,
+                thread_ts: threadTs,
+              },
+            },
+          },
+          upsert: true,
+        },
+      });
+
+      processed += 1;
+    });
+  });
+
+  if (messageOps.length) {
+    await mongoDb.collection("slack_messages").bulkWrite(messageOps, { ordered: false });
+  }
+
+  if (documentOps.length) {
+    await mongoDb.collection("documents").bulkWrite(documentOps, { ordered: false });
+  }
+
+  return {
+    mode: "mongo",
+    processed,
+    upserted: messageOps.length,
+    documentsUpserted: documentOps.length,
+  };
+}
+
 function toLowerEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -1118,6 +1319,7 @@ export {
   saveAlerts,
   saveRawDataSnapshot,
   saveMeetingRecord,
+  upsertSlackMessagesBatch,
   getDatabaseMeetingSource,
   getEmployeeMeetingStats,
   listMeetings,

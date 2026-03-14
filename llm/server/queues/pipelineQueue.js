@@ -121,6 +121,22 @@ function hasDeltaData(rawSources) {
   return slackCount > 0 || meetingCount > 0;
 }
 
+function pickIdentityCandidate(rawSources, employeeEmail) {
+  const candidates = Array.isArray(rawSources?.identityCandidates) ? rawSources.identityCandidates : [];
+  if (!candidates.length) {
+    return null;
+  }
+
+  const targetEmail = String(employeeEmail || "").toLowerCase();
+  if (!targetEmail) {
+    return candidates[0];
+  }
+
+  return (
+    candidates.find((item) => String(item?.employeeEmail || "").toLowerCase() === targetEmail) || candidates[0]
+  );
+}
+
 async function runAnalysisPipeline({ unified, rawSources, reason, model, meetingAt }) {
   const employeeEmail = unified.employee.email.toLowerCase();
   const previousProfile = await getLatestProfile(employeeEmail);
@@ -213,7 +229,7 @@ async function runInlinePipeline({ dataRoot, employeeEmail, reason, model, meeti
     historicalMode,
     injectedSlackEvent,
   });
-  const identity = rawSources.identityCandidates?.[0];
+  const identity = pickIdentityCandidate(rawSources, employeeEmail);
   if (identity) {
     await upsertEmployeeIdentity(identity);
   }
@@ -274,7 +290,7 @@ async function startPipelineQueues({ redisUrl, dataRoot, model, mode = "auto" })
             injectedSlackEvent: job.data.injectedSlackEvent || null,
           });
 
-          const identity = rawSources.identityCandidates?.[0];
+          const identity = pickIdentityCandidate(rawSources, employeeEmail);
           if (identity) {
             await upsertEmployeeIdentity(identity);
           }

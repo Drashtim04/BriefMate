@@ -16,6 +16,7 @@ import {
   getEmployeeMeetingStats,
   getSyncState,
   getDatabaseMeetingSource,
+  upsertEmployeeIdentity,
   getChatSession,
   createChatSession,
   appendChatMessage,
@@ -33,7 +34,10 @@ import {
   chatAssistantService,
 } from "./services/analysis/groqServices.js";
 import { initGroqDispatcher, getGroqDispatcherInfo } from "./services/analysis/groqDispatcher.js";
-import { fetchAllSourcesParallelWithDelta } from "./services/ingestion/fetchSources.js";
+import {
+  fetchAllSourcesParallelWithDelta,
+  listBambooHrIdentityCandidates,
+} from "./services/ingestion/fetchSources.js";
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -81,6 +85,14 @@ const sourceCheckSchema = z.object({
       const normalized = String(value || "").trim().toLowerCase();
       return ["1", "true", "yes", "y", "on"].includes(normalized);
     }),
+});
+
+const syncBambooHrSchema = z.object({
+  reason: z.string().optional(),
+  runPipeline: z.boolean().optional().default(false),
+  continueOnError: z.boolean().optional().default(true),
+  limit: z.coerce.number().int().min(1).max(5000).optional(),
+  employeeEmails: z.array(z.string().email()).optional(),
 });
 
 function normalizeEmailList(values = []) {
@@ -291,6 +303,85 @@ app.post("/pipeline/run", async (req, res) => {
     res.status(202).json({ accepted: true, jobId: job.id });
   } catch (error) {
     res.status(400).json({ error: error.message || "invalid request" });
+  }
+});
+
+app.post("/pipeline/sync-bamboohr", async (req, res) => {
+  try {
+    const parsed = syncBambooHrSchema.parse(req.body || {});
+    const reason = parsed.reason || "bamboohr-sync-all";
+    const filterSet = new Set(normalizeEmailList(parsed.employeeEmails || []));
+
+    const allCandidates = await listBambooHrIdentityCandidates({ dataRoot: env.DATA_ROOT });
+    let candidates = Array.isArray(allCandidates) ? allCandidates : [];
+
+    if (filterSet.size > 0) {
+      candidates = candidates.filter((row) => filterSet.has(String(row?.employeeEmail || "").toLowerCase()));
+    }
+
+    if (parsed.limit) {
+      candidates = candidates.slice(0, parsed.limit);
+    }
+
+    const results = [];
+    for (const identity of candidates) {
+      const employeeEmail = String(identity?.employeeEmail || "").toLowerCase();
+      if (!employeeEmail) {
+        continue;
+      }
+
+      try {
+        if (parsed.runPipeline) {
+          const job = await enqueuePipelineRun({
+            employeeEmail,
+            reason,
+            dataRoot: env.DATA_ROOT,
+            model: env.GROQ_MODEL,
+            meetingAt: null,
+          });
+
+          results.push({
+            employeeEmail,
+            status: "accepted",
+            mode: job?.mode || env.QUEUE_MODE,
+            jobId: job?.id || null,
+          });
+        } else {
+          await upsertEmployeeIdentity(identity);
+          results.push({
+            employeeEmail,
+            status: "updated",
+            mode: "identity-only",
+            jobId: null,
+          });
+        }
+      } catch (error) {
+        results.push({
+          employeeEmail,
+          status: "error",
+          error: error?.message || "sync failed",
+        });
+
+        if (!parsed.continueOnError) {
+          throw error;
+        }
+      }
+    }
+
+    const acceptedCount = results.filter((item) => item.status === "accepted" || item.status === "updated").length;
+    const errorCount = results.filter((item) => item.status === "error").length;
+
+    return res.status(202).json({
+      accepted: true,
+      reason,
+      runPipeline: parsed.runPipeline,
+      totalCandidates: candidates.length,
+      acceptedCount,
+      errorCount,
+      data: results,
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "bulk bamboohr sync failed" });
   }
 });
 

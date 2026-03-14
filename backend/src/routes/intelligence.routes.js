@@ -5,6 +5,8 @@ const { readTokens } = require('../shared/googleTokenStore');
 const { getOAuth2Client } = require('../connectors/google/googleClient');
 const { listEvents } = require('../connectors/google/googleCalendar');
 const Document = require('../db/models/Document');
+const Meeting = require('../db/models/meeting');
+const MeetingTranscriptTurn = require('../db/models/MeetingTranscriptTurn');
 
 const router = express.Router();
 
@@ -164,6 +166,24 @@ function mapCalendarDocToMeeting(calendarDoc) {
   };
 }
 
+function mapFirefliesDocToMeeting(meetingDoc) {
+  const participants = Array.isArray(meetingDoc?.participants)
+    ? Array.from(new Set(meetingDoc.participants.map(normalizeEmail).filter(Boolean)))
+    : [];
+
+  const employeeEmail = normalizeEmail(meetingDoc?.employeeEmail) || participants[0] || '';
+
+  return {
+    meetingId: String(meetingDoc?.meetingId || ''),
+    title: String(meetingDoc?.title || '').trim() || 'Meeting',
+    meetingAt: asIsoDate(meetingDoc?.meetingAt) || (meetingDoc?.meetingAt ? String(meetingDoc.meetingAt) : null),
+    employeeEmail,
+    participants,
+    summary: String(meetingDoc?.summary || '').trim(),
+    source: 'fireflies',
+  };
+}
+
 function mergeMeetings(rows = []) {
   const seen = new Set();
   const merged = [];
@@ -304,6 +324,69 @@ async function listCalendarMeetings({ orgId, employeeEmail, query, fetchLimit = 
     });
 }
 
+async function listFirefliesMeetings({ orgId, employeeEmail, query, fetchLimit = 400 }) {
+  const connection = await connectMongo();
+  if (!connection?.connected) {
+    return [];
+  }
+
+  const docs = await Meeting.find(
+    { orgId },
+    {
+      meetingId: 1,
+      title: 1,
+      meetingAt: 1,
+      employeeEmail: 1,
+      participants: 1,
+      summary: 1,
+    }
+  )
+    .sort({ meetingAt: -1 })
+    .limit(fetchLimit)
+    .lean();
+
+  const normalizedQuery = String(query || '').trim().toLowerCase();
+  const normalizedEmail = normalizeEmail(employeeEmail);
+
+  return docs
+    .map(mapFirefliesDocToMeeting)
+    .filter((row) => {
+      if (!row.meetingId) {
+        return false;
+      }
+
+      if (normalizedEmail) {
+        const email = normalizeEmail(row.employeeEmail);
+        const participants = Array.isArray(row.participants) ? row.participants.map(normalizeEmail) : [];
+        if (email !== normalizedEmail && !participants.includes(normalizedEmail)) {
+          return false;
+        }
+      }
+
+      if (!normalizedQuery) {
+        return true;
+      }
+
+      const text = `${row.title || ''}\n${row.summary || ''}\n${(row.participants || []).join(' ')}`.toLowerCase();
+      return text.includes(normalizedQuery);
+    })
+    .map((row) => {
+      if (!normalizedEmail) {
+        return row;
+      }
+
+      const participants = Array.isArray(row.participants) ? row.participants.map(normalizeEmail) : [];
+      if (participants.includes(normalizedEmail)) {
+        return {
+          ...row,
+          employeeEmail: normalizedEmail,
+        };
+      }
+
+      return row;
+    });
+}
+
 async function ingestGoogleCalendarEvents({ orgId, calendarId, pastDays, futureDays, maxResults }) {
   const tokens = await readTokens();
   if (!tokens) {
@@ -385,7 +468,7 @@ async function ingestGoogleCalendarEvents({ orgId, calendarId, pastDays, futureD
 }
 
 async function getMergedMeetings({ orgId, employeeEmail, query, limit }) {
-  const safeLimit = Number.isFinite(Number(limit)) ? Math.max(1, Math.min(Number(limit), 100)) : 20;
+  const safeLimit = Number.isFinite(Number(limit)) ? Math.max(1, Math.min(Number(limit), 500)) : 20;
 
   const params = new URLSearchParams();
   if (employeeEmail) params.set('employeeEmail', employeeEmail);
@@ -404,8 +487,15 @@ async function getMergedMeetings({ orgId, employeeEmail, query, limit }) {
     fetchLimit: Math.max(200, safeLimit * 8),
   });
 
-  const merged = mergeMeetings([...llmRows, ...calendarRows]).slice(0, safeLimit);
-  return { upstream, llmRows, calendarRows, merged, safeLimit };
+  const firefliesRows = await listFirefliesMeetings({
+    orgId,
+    employeeEmail,
+    query,
+    fetchLimit: Math.max(200, safeLimit * 8),
+  });
+
+  const merged = mergeMeetings([...llmRows, ...calendarRows, ...firefliesRows]).slice(0, safeLimit);
+  return { upstream, llmRows, calendarRows, firefliesRows, merged, safeLimit };
 }
 
 async function getCalendarMeetingByMeetingId({ orgId, meetingId }) {
@@ -436,6 +526,34 @@ async function getCalendarMeetingByMeetingId({ orgId, meetingId }) {
       metadata: 1,
       raw: 1,
       ingestedAt: 1,
+    }
+  ).lean();
+}
+
+async function getFirefliesMeetingByMeetingId({ orgId, meetingId }) {
+  const id = String(meetingId || '').trim();
+  if (!id) {
+    return null;
+  }
+
+  const connection = await connectMongo();
+  if (!connection?.connected) {
+    return null;
+  }
+
+  return Meeting.findOne(
+    {
+      orgId,
+      meetingId: id,
+    },
+    {
+      meetingId: 1,
+      title: 1,
+      meetingAt: 1,
+      employeeEmail: 1,
+      participants: 1,
+      summary: 1,
+      transcript: 1,
     }
   ).lean();
 }
@@ -517,31 +635,32 @@ router.get('/meetings', async (req, res, next) => {
     const query = req.query.q ? String(req.query.q) : '';
     const requestedLimit = Number(req.query.limit || 20);
     const orgId = getOrgId(req);
-    const { upstream, llmRows, calendarRows, merged } = await getMergedMeetings({
+    const { upstream, llmRows, calendarRows, firefliesRows, merged } = await getMergedMeetings({
       orgId,
       employeeEmail,
       query,
       limit: requestedLimit,
     });
 
-    if (!upstream.ok && merged.length === 0) {
-      return res.status(upstream.status || 502).json(upstream.json || {
-        ok: false,
-        error: {
-          message: 'Failed to load meetings from upstream service',
-          code: 'UPSTREAM_ERROR',
-        },
-      });
-    }
-
     return res.json({
+      ok: true,
       count: merged.length,
       data: merged,
       sources: {
         llm: llmRows.length,
         googleCalendar: calendarRows.length,
+        fireflies: firefliesRows.length,
       },
       partial: !upstream.ok,
+      upstream: upstream.ok
+        ? undefined
+        : {
+            status: upstream.status || 502,
+            error: upstream?.json?.error || {
+              message: 'Failed to load meetings from upstream service',
+              code: 'UPSTREAM_ERROR',
+            },
+          },
     });
   } catch (err) {
     return next(err);
@@ -562,7 +681,7 @@ router.post('/meetings/refresh-google', async (req, res, next) => {
     const query = req.body?.q ? String(req.body.q) : '';
     const requestedLimit = Number(req.body?.limit || req.query.limit || 20);
 
-    const { upstream, llmRows, calendarRows, merged } = await getMergedMeetings({
+    const { upstream, llmRows, calendarRows, firefliesRows, merged } = await getMergedMeetings({
       orgId,
       employeeEmail,
       query,
@@ -579,6 +698,7 @@ router.post('/meetings/refresh-google', async (req, res, next) => {
           sources: {
             llm: llmRows.length,
             googleCalendar: calendarRows.length,
+            fireflies: firefliesRows.length,
           },
           partial: !upstream.ok,
         },
@@ -610,6 +730,62 @@ router.get('/meetings/:id/transcript', async (req, res, next) => {
         transcriptCount: 0,
         totalTranscriptCount: 0,
         source: 'google_calendar',
+      });
+    }
+
+    const orgId = getOrgId(req);
+    const firefliesDoc = await getFirefliesMeetingByMeetingId({ orgId, meetingId: meetingIdRaw });
+    if (firefliesDoc) {
+      const query = String(req.query.q || '').trim().toLowerCase();
+
+      let transcriptRows = await MeetingTranscriptTurn.find(
+        {
+          orgId,
+          meetingId: meetingIdRaw,
+        },
+        {
+          turnIndex: 1,
+          speaker: 1,
+          text: 1,
+        }
+      )
+        .sort({ turnIndex: 1 })
+        .lean();
+
+      if (!transcriptRows.length && Array.isArray(firefliesDoc.transcript)) {
+        transcriptRows = firefliesDoc.transcript.map((row, index) => ({
+          turnIndex: Number.isFinite(Number(row?.turnIndex)) ? Number(row.turnIndex) : index,
+          speaker: String(row?.speaker || row?.speaker_name || row?.role || '').trim(),
+          text: String(row?.text || row?.message || '').trim(),
+        }));
+      }
+
+      const normalizedTranscript = transcriptRows
+        .map((row, index) => ({
+          turnIndex: Number.isFinite(Number(row?.turnIndex)) ? Number(row.turnIndex) : index,
+          speaker: String(row?.speaker || '').trim() || null,
+          text: String(row?.text || '').trim(),
+        }))
+        .filter((row) => row.text);
+
+      const filteredTranscript = query
+        ? normalizedTranscript.filter((row) => {
+            const haystack = `${row.speaker || ''} ${row.text}`.toLowerCase();
+            return haystack.includes(query);
+          })
+        : normalizedTranscript;
+
+      const mapped = mapFirefliesDocToMeeting(firefliesDoc);
+      return res.json({
+        meetingId: mapped.meetingId,
+        title: mapped.title,
+        meetingAt: mapped.meetingAt,
+        participants: mapped.participants,
+        summary: mapped.summary,
+        transcript: filteredTranscript,
+        transcriptCount: filteredTranscript.length,
+        totalTranscriptCount: normalizedTranscript.length,
+        source: 'fireflies',
       });
     }
 
@@ -659,6 +835,10 @@ router.get('/chat/sessions/:sessionId/history', async (req, res, next) => {
 
 router.post('/pipeline/run', async (req, res, next) => {
   await proxyJson({ req, res, next, method: 'POST', targetPath: '/pipeline/run', body: req.body || {} });
+});
+
+router.post('/pipeline/sync-bamboohr', async (req, res, next) => {
+  await proxyJson({ req, res, next, method: 'POST', targetPath: '/pipeline/sync-bamboohr', body: req.body || {} });
 });
 
 module.exports = router;

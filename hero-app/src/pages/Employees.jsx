@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { listEmployees, refreshEmployeePipeline } from "../lib/api";
+import { listEmployees, refreshEmployeePipeline, syncBambooHrEmployees } from "../lib/api";
 
 const REFRESH_POLL_INTERVAL_MS = 2500;
 const REFRESH_POLL_MAX_ATTEMPTS = 12;
@@ -47,6 +47,7 @@ export function Employees() {
   const [refreshNotice, setRefreshNotice] = useState("");
   const [refreshingByEmail, setRefreshingByEmail] = useState({});
   const [refreshStatusByEmail, setRefreshStatusByEmail] = useState({});
+  const [isBulkSyncing, setIsBulkSyncing] = useState(false);
 
   const loadEmployees = useCallback(async ({ withLoader = true } = {}) => {
     try {
@@ -138,6 +139,37 @@ export function Employees() {
     return "Refresh";
   }
 
+  async function handleSyncAllBambooHr() {
+    if (isBulkSyncing) {
+      return;
+    }
+
+    setError("");
+    setRefreshNotice("Starting BambooHR sync for all employees...");
+    setIsBulkSyncing(true);
+
+    try {
+      const result = await syncBambooHrEmployees({
+        runPipeline: false,
+        continueOnError: true,
+      });
+
+      const total = Number(result?.totalCandidates || 0);
+      const accepted = Number(result?.acceptedCount || 0);
+      const failed = Number(result?.errorCount || 0);
+
+      setRefreshNotice(
+        `BambooHR sync completed: ${accepted}/${total} employees updated${failed > 0 ? `, ${failed} failed` : ""}.`
+      );
+
+      await loadEmployees({ withLoader: false });
+    } catch (err) {
+      setError(err?.message || "Unable to sync BambooHR employees");
+    } finally {
+      setIsBulkSyncing(false);
+    }
+  }
+
   const filteredEmployees = employees.filter((emp) => {
     const term = search.toLowerCase();
     return (
@@ -157,15 +189,27 @@ export function Employees() {
           </p>
         </div>
 
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search by name, dept, or role..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1f7a6c]/50 focus:border-[#1f7a6c] bg-white transition-colors"
-          />
+        <div className="flex w-full sm:w-auto items-center gap-2">
+          <button
+            type="button"
+            onClick={handleSyncAllBambooHr}
+            disabled={isBulkSyncing}
+            className="inline-flex items-center gap-2 rounded-md border border-[#1f7a6c]/30 px-3 py-2 text-sm font-medium text-[#1f7a6c] hover:bg-[#1f7a6c]/10 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className={`w-4 h-4 ${isBulkSyncing ? "animate-spin" : ""}`} />
+            {isBulkSyncing ? "Syncing BambooHR..." : "Sync BambooHR"}
+          </button>
+
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search by name, dept, or role..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1f7a6c]/50 focus:border-[#1f7a6c] bg-white transition-colors"
+            />
+          </div>
         </div>
       </div>
 

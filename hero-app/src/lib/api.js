@@ -357,4 +357,35 @@ export async function refreshEmployeePipeline(employeeEmail, reason = "manual-re
   });
 }
 
+export async function syncBambooHrEmployees(options = {}) {
+  const providedEmails = Array.isArray(options.employeeEmails)
+    ? Array.from(
+        new Set(
+          options.employeeEmails
+            .map((value) => String(value || "").trim().toLowerCase())
+            .filter((value) => value.includes("@"))
+        )
+      )
+    : [];
+
+  const payload = {
+    reason: String(options.reason || "manual-bamboohr-bulk-sync"),
+    runPipeline: options.runPipeline === true,
+    continueOnError: options.continueOnError !== false,
+  };
+
+  if (providedEmails.length > 0) {
+    payload.employeeEmails = providedEmails;
+  }
+
+  if (Number.isFinite(Number(options.limit))) {
+    payload.limit = Number(options.limit);
+  }
+
+  return request("/api/intelligence/pipeline/sync-bamboohr", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export { BACKEND_BASE_URL };
