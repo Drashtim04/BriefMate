@@ -7,6 +7,7 @@ import { AnimatePresence, motion } from "motion/react";
 const APP_NAV_ITEMS = [
   { name: "Dashboard",       path: "/dashboard"       },
   { name: "Employees",       path: "/employees"       },
+  { name: "AI Insights",     path: "/ai-insights"     },
   { name: "Chatbot",         path: "/chatbot"         },
   { name: "Meeting Summary", path: "/meeting-summary" },
 ];
@@ -14,6 +15,7 @@ const APP_NAV_ITEMS = [
 // Nav items shown on the landing page — Dashboard is intentionally excluded
 const LANDING_NAV_ITEMS = [
   { name: "Employees",       path: "/employees"       },
+  { name: "AI Insights",     path: "/ai-insights"     },
   { name: "Chatbot",         path: "/chatbot"         },
   { name: "Meeting Summary", path: "/meeting-summary" },
 ];

@@ -10,6 +10,7 @@ import { EmployeeProfile } from "./pages/EmployeeProfile";
 import { Chatbot } from "./pages/Chatbot";
 import { MeetingSummary } from "./pages/MeetingSummary";
 import { Profile } from "./pages/Profile";
+import { AiInsights } from "./pages/AiInsights";
 import { HeroSection } from "./components/HeroSection";
 
 /* ── Landing layout: NO navbar, no top padding ── */
@@ -74,6 +75,7 @@ function AnimatedRoutes() {
         <Route path="/employees" element={<RouteTransition><AppLayout><Employees /></AppLayout></RouteTransition>} />
         <Route path="/employees/:id" element={<RouteTransition><AppLayout><EmployeeProfile /></AppLayout></RouteTransition>} />
         <Route path="/chatbot" element={<RouteTransition><AppLayout><Chatbot /></AppLayout></RouteTransition>} />
+        <Route path="/ai-insights" element={<RouteTransition><AppLayout><AiInsights /></AppLayout></RouteTransition>} />
         <Route path="/meeting-summary" element={<RouteTransition><AppLayout><MeetingSummary /></AppLayout></RouteTransition>} />
         <Route path="/profile" element={<RouteTransition><AppLayout><Profile /></AppLayout></RouteTransition>} />
       </Routes>

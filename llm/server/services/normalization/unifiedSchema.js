@@ -38,6 +38,7 @@ function normalizeUnifiedSchema({ hrms, meet, slack }) {
   const employee = hrms?.employee || {};
   const job = hrms?.job || {};
   const manager = job?.reportsTo || {};
+  const normalizedEmail = String(employee.workEmail || employee.email || "").trim().toLowerCase();
 
   const slackMessages = flattenSlack(slack);
   const meetingLines = flattenTranscript(meet);
@@ -45,7 +46,7 @@ function normalizeUnifiedSchema({ hrms, meet, slack }) {
   return {
     employee: {
       employeeId: employee.id || "unknown",
-      email: employee.workEmail || "unknown@company.com",
+      email: normalizedEmail,
       displayName:
         employee.displayName || [employee.firstName, employee.lastName].filter(Boolean).join(" ") || "Unknown",
       role: job.title || "Unknown",

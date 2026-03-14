@@ -596,6 +596,21 @@ function applyMeetingDelta(meet, meetingCursor, historicalMode) {
   return { data: out, nextCursor };
 }
 
+function isPlaceholderEmployeeEmail(value) {
+  const email = String(value || "").trim().toLowerCase();
+  if (!email) {
+    return true;
+  }
+  if (!email.includes("@")) {
+    return true;
+  }
+  return (
+    email === "unknown@company.com" ||
+    email === "unknown@unknown.local" ||
+    email.startsWith("unknown@")
+  );
+}
+
 function extractIdentityCandidates({ hrms, slack }) {
   const candidates = [];
 
@@ -621,7 +636,7 @@ function extractIdentityCandidates({ hrms, slack }) {
 
   employeeRows.forEach((row) => {
     const employeeEmail = String(row?.workEmail || row?.email || "").toLowerCase();
-    if (!employeeEmail) {
+    if (isPlaceholderEmployeeEmail(employeeEmail)) {
       return;
     }
 

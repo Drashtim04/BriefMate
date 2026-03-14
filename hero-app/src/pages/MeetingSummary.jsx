@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { Calendar as CalendarIcon, Clock, Users, ArrowRight, Lightbulb, CheckCircle2, ChevronLeft, ChevronRight, Loader2, ShieldAlert } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, Users, ArrowRight, Lightbulb, CheckCircle2, ChevronLeft, ChevronRight, Loader2, ShieldAlert, RefreshCw } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { getMeetingTranscript, getUpcomingBrief, listMeetings, refreshGoogleCalendarMeetings } from "../lib/api";
+import {
+  getMeetingTranscript,
+  getUpcomingBrief,
+  listMeetings,
+  refreshGoogleCalendarMeetings,
+  syncCalendarEventsIngest,
+  syncFirefliesTranscripts,
+} from "../lib/api";
 
 // ---------- Mini Calendar ----------
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -116,6 +123,9 @@ export function MeetingSummary() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [sortMode, setSortMode] = useState("logical");
+  const [isCalendarSyncing, setIsCalendarSyncing] = useState(false);
+  const [isTranscriptSyncing, setIsTranscriptSyncing] = useState(false);
+  const [syncNotice, setSyncNotice] = useState("");
 
   function toMeetingMillis(meetingAt) {
     const text = String(meetingAt || "").trim();
@@ -463,6 +473,49 @@ export function MeetingSummary() {
     };
   }, [selectedMeeting?.id, selectedMeeting?.employeeEmail, selectedMeeting?.meetingAt]);
 
+  async function handleCalendarSync() {
+    try {
+      setIsCalendarSyncing(true);
+      setSyncNotice("");
+      setError("");
+
+      const ingest = await syncCalendarEventsIngest({
+        calendarId: "primary",
+        pastDays: 1,
+        futureDays: 14,
+      });
+
+      setSyncNotice(
+        `Calendar sync completed. Stored ${Number(ingest?.eventsStored || 0)} events and updated ${Number(ingest?.participantsStored || 0)} participant links.`
+      );
+    } catch (err) {
+      setSyncNotice(`Calendar sync failed: ${err?.message || "Unknown error"}`);
+    } finally {
+      setIsCalendarSyncing(false);
+    }
+  }
+
+  async function handleTranscriptSync() {
+    try {
+      setIsTranscriptSyncing(true);
+      setSyncNotice("");
+      setError("");
+
+      const ingest = await syncFirefliesTranscripts({
+        syncHrToCalendar: true,
+        limit: 100,
+      });
+
+      setSyncNotice(
+        `Transcript sync completed. Processed ${Number(ingest?.transcriptsSeen || 0)} transcripts and updated ${Number(ingest?.meetingsUpserted || 0)} meetings.`
+      );
+    } catch (err) {
+      setSyncNotice(`Transcript sync failed: ${err?.message || "Unknown error"}`);
+    } finally {
+      setIsTranscriptSyncing(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -470,7 +523,32 @@ export function MeetingSummary() {
         <p className="text-gray-500 mt-1">
           Review AI-generated insights and transcripts from past conversations.
         </p>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleCalendarSync}
+            disabled={isCalendarSyncing || isTranscriptSyncing}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#1f7a6c] text-white px-3 py-2 text-sm font-medium hover:bg-[#165a50] disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {isCalendarSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            Sync Calendar
+          </button>
+
+          <button
+            onClick={handleTranscriptSync}
+            disabled={isTranscriptSyncing || isCalendarSyncing}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#0f766e] text-white px-3 py-2 text-sm font-medium hover:bg-[#115e59] disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {isTranscriptSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            Sync Transcripts
+          </button>
+        </div>
       </div>
+
+      {syncNotice && (
+        <div className="text-sm text-[#0f5132] bg-[#d1e7dd] border border-[#badbcc] px-4 py-2 rounded-lg">
+          {syncNotice}
+        </div>
+      )}
 
       {error && (
         <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 px-4 py-2 rounded-lg">

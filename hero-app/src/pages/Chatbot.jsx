@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
-import { Send, Bot, User, Menu, Loader2, Filter, FileText } from "lucide-react";
+import { Send, Bot, User, Menu, Loader2, Filter, FileText, Plus, Trash2 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { createChatSession, getChatSessionHistory, sendChatQuery } from "../lib/api";
+import {
+  createChatSession,
+  deleteChatSession,
+  getChatSessionHistory,
+  listChatSessions,
+  sendChatQuery,
+} from "../lib/api";
 
 const CHATBOT_STORAGE_KEY = "hrx.chatbot.state.v2";
 
@@ -38,43 +44,18 @@ function mapSessionMessagesToUi(rows = []) {
     .filter(Boolean);
 }
 
-function buildChatHistoryFromMessages(rows = [], sessionId = "") {
-  const key = String(sessionId || "").trim();
-  const latestUserMessage = rows
-    .slice()
-    .reverse()
-    .find((row) => row?.sender === "user" && String(row?.text || "").trim());
-
-  if (!key) {
-    return latestUserMessage
-      ? [{ id: `hist-single-${String(latestUserMessage.id || Date.now())}`, sessionId: "", text: latestUserMessage.text }]
-      : [];
+function toSessionTitle(session, fallback = "New chat") {
+  const explicit = String(session?.title || "").trim();
+  if (explicit) {
+    return explicit;
   }
-
-  return [
-    {
-      id: `hist-${key}`,
-      sessionId: key,
-      text: latestUserMessage?.text || "Current chat",
-    },
-  ];
+  return fallback;
 }
 
-function upsertRecentChat(prev = [], { sessionId = "", text = "" } = {}) {
-  const key = String(sessionId || "").trim();
-  const preview = String(text || "").trim() || "Current chat";
-  if (!key) {
-    return [{ id: `hist-local-${Date.now()}`, sessionId: "", text: preview }];
-  }
-
-  const current = Array.isArray(prev) ? [...prev] : [];
-  const index = current.findIndex((item) => String(item?.sessionId || "").trim() === key);
-  const nextItem = { id: `hist-${key}`, sessionId: key, text: preview };
-
-  if (index >= 0) {
-    current.splice(index, 1);
-  }
-  return [nextItem, ...current].slice(0, 8);
+function firstUserPromptFromHistory(rows = []) {
+  const firstUser = rows.find((row) => String(row?.role || "").toLowerCase() === "user");
+  const text = String(firstUser?.content || "").trim();
+  return text || "";
 }
 
 export function Chatbot() {
@@ -82,7 +63,7 @@ export function Chatbot() {
   const [isSending, setIsSending] = useState(false);
   const [isHydrating, setIsHydrating] = useState(true);
   const [sessionId, setSessionId] = useState("");
-  const [chatHistory, setChatHistory] = useState([]);
+  const [sessions, setSessions] = useState([]);
   const [messages, setMessages] = useState(DEFAULT_MESSAGES);
 
   useEffect(() => {
@@ -98,24 +79,51 @@ export function Chatbot() {
       }
 
       const cachedMessages = Array.isArray(parsed?.messages) ? parsed.messages : [];
-      const cachedHistory = Array.isArray(parsed?.chatHistory) ? parsed.chatHistory : [];
       const cachedSessionId = String(parsed?.sessionId || "").trim();
 
       if (cachedMessages.length > 0) {
         setMessages(cachedMessages);
-      }
-      if (cachedHistory.length > 0) {
-        setChatHistory(cachedHistory);
       }
       if (cachedSessionId) {
         setSessionId(cachedSessionId);
       }
 
       try {
+        const listed = await listChatSessions({ limit: 50 }).catch(() => []);
+        if (!isMounted) return;
+
+        const normalizedSessions = Array.isArray(listed)
+          ? listed.map((row) => ({
+              sessionId: String(row?.sessionId || "").trim(),
+              title: toSessionTitle(row),
+              lastMessageAt: row?.lastMessageAt || row?.startedAt || "",
+              startedAt: row?.startedAt || "",
+            })).filter((row) => row.sessionId)
+          : [];
+
+        if (normalizedSessions.length > 0) {
+          setSessions(normalizedSessions);
+        }
+
         let activeSessionId = cachedSessionId;
+        if (
+          !activeSessionId ||
+          (normalizedSessions.length > 0 && !normalizedSessions.some((row) => row.sessionId === activeSessionId))
+        ) {
+          activeSessionId = normalizedSessions[0]?.sessionId || "";
+        }
         if (!activeSessionId) {
           const created = await createChatSession();
           activeSessionId = String(created?.sessionId || "").trim();
+          if (activeSessionId) {
+            const createdTitle = toSessionTitle(created);
+            setSessions((prev) => [{
+              sessionId: activeSessionId,
+              title: createdTitle,
+              lastMessageAt: created?.lastMessageAt || created?.startedAt || new Date().toISOString(),
+              startedAt: created?.startedAt || new Date().toISOString(),
+            }, ...prev.filter((row) => row.sessionId !== activeSessionId)]);
+          }
         }
 
         if (!isMounted) return;
@@ -125,13 +133,18 @@ export function Chatbot() {
           const historyPayload = await getChatSessionHistory(activeSessionId, 180);
           if (!isMounted) return;
 
-          const restoredMessages = mapSessionMessagesToUi(historyPayload?.data || []);
+          const historyRows = Array.isArray(historyPayload?.data) ? historyPayload.data : [];
+          const restoredMessages = mapSessionMessagesToUi(historyRows);
           if (restoredMessages.length > 0) {
             setMessages(restoredMessages);
-            setChatHistory(buildChatHistoryFromMessages(restoredMessages, activeSessionId));
+            const fallbackTitle = firstUserPromptFromHistory(historyRows) || "Current chat";
+            setSessions((prev) => prev.map((row) =>
+              row.sessionId === activeSessionId && (!row.title || row.title === "New chat")
+                ? { ...row, title: fallbackTitle }
+                : row
+            ));
           } else if (cachedMessages.length === 0) {
             setMessages(DEFAULT_MESSAGES);
-            setChatHistory([]);
           }
         }
       } catch (_err) {
@@ -159,13 +172,12 @@ export function Chatbot() {
         JSON.stringify({
           sessionId,
           messages: messages.slice(-60),
-          chatHistory: chatHistory.slice(0, 20),
         })
       );
     } catch (_err) {
       // Ignore storage quota or access errors.
     }
-  }, [messages, chatHistory, sessionId]);
+  }, [messages, sessionId]);
 
   const CHRO_TEMPLATE_INPUTS = [
     {
@@ -274,7 +286,22 @@ export function Chatbot() {
         count: 0,
       },
     ].slice(-60));
-    setChatHistory((prev) => upsertRecentChat(prev, { sessionId: activeSessionId, text: nextInput }));
+    setSessions((prev) => {
+      const current = Array.isArray(prev) ? [...prev] : [];
+      const idx = current.findIndex((item) => item.sessionId === activeSessionId);
+      const now = new Date().toISOString();
+      const next = {
+        sessionId: activeSessionId,
+        title: idx >= 0 ? current[idx].title : nextInput,
+        lastMessageAt: now,
+      };
+
+      if (idx >= 0) {
+        current.splice(idx, 1);
+      }
+
+      return [next, ...current].slice(0, 50);
+    });
     setInput("");
 
     try {
@@ -324,7 +351,103 @@ export function Chatbot() {
     }
   };
 
-  const fillPrompt = (text) => setInput(text);
+  const handleSelectSession = async (nextSessionId) => {
+    const key = String(nextSessionId || "").trim();
+    if (!key || key === sessionId || isHydrating || isSending) return;
+
+    setIsHydrating(true);
+    setSessionId(key);
+    setInput("");
+
+    try {
+      const historyPayload = await getChatSessionHistory(key, 180);
+      const historyRows = Array.isArray(historyPayload?.data) ? historyPayload.data : [];
+      const restoredMessages = mapSessionMessagesToUi(historyRows);
+      setMessages(restoredMessages.length > 0 ? restoredMessages : DEFAULT_MESSAGES);
+
+      const fallbackTitle = firstUserPromptFromHistory(historyRows) || "Current chat";
+      setSessions((prev) => prev.map((row) =>
+        row.sessionId === key && (!row.title || row.title === "New chat")
+          ? { ...row, title: fallbackTitle }
+          : row
+      ));
+    } catch (_err) {
+      setMessages(DEFAULT_MESSAGES);
+    } finally {
+      setIsHydrating(false);
+    }
+  };
+
+  const handleCreateNewChat = async () => {
+    if (isHydrating || isSending) return;
+
+    setIsHydrating(true);
+    setInput("");
+
+    try {
+      const created = await createChatSession();
+      const createdSessionId = String(created?.sessionId || "").trim();
+      if (!createdSessionId) {
+        return;
+      }
+
+      setSessionId(createdSessionId);
+      setMessages(DEFAULT_MESSAGES);
+      setSessions((prev) => [
+        {
+          sessionId: createdSessionId,
+          title: toSessionTitle(created),
+          lastMessageAt: created?.lastMessageAt || created?.startedAt || new Date().toISOString(),
+          startedAt: created?.startedAt || new Date().toISOString(),
+        },
+        ...prev.filter((row) => row.sessionId !== createdSessionId),
+      ].slice(0, 50));
+    } finally {
+      setIsHydrating(false);
+    }
+  };
+
+  const handleDeleteSession = async (targetSessionId) => {
+    const key = String(targetSessionId || "").trim();
+    if (!key || isHydrating || isSending) return;
+
+    const ok = window.confirm("Delete this chat session?");
+    if (!ok) return;
+
+    setIsHydrating(true);
+
+    try {
+      await deleteChatSession(key);
+      const nextSessions = sessions.filter((item) => item.sessionId !== key);
+      setSessions(nextSessions);
+
+      if (sessionId === key) {
+        const replacement = nextSessions[0]?.sessionId || "";
+        if (replacement) {
+          await handleSelectSession(replacement);
+        } else {
+          const created = await createChatSession();
+          const createdSessionId = String(created?.sessionId || "").trim();
+          if (createdSessionId) {
+            setSessionId(createdSessionId);
+            setMessages(DEFAULT_MESSAGES);
+            setSessions([
+              {
+                sessionId: createdSessionId,
+                title: toSessionTitle(created),
+                lastMessageAt: created?.lastMessageAt || created?.startedAt || new Date().toISOString(),
+                startedAt: created?.startedAt || new Date().toISOString(),
+              },
+            ]);
+          }
+        }
+      }
+    } catch (_err) {
+      // Ignore delete errors and preserve current UI state.
+    } finally {
+      setIsHydrating(false);
+    }
+  };
 
   const runTemplatePrompt = (text) => {
     const nextText = String(text || "").trim();
@@ -338,15 +461,55 @@ export function Chatbot() {
       
       {/* Left Panel - History */}
       <div className="hidden md:flex flex-col w-64 border-r border-[#dbe5e8] bg-[linear-gradient(180deg,#f7fbfc_0%,#eef5f7_100%)] p-4">
-        <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4 flex items-center">
-          <Menu className="w-4 h-4 mr-2" /> Recent Chats
-        </h2>
-        <div className="space-y-2">
-          {chatHistory.map(chat => (
-            <button key={chat.id} onClick={() => fillPrompt(chat.text)} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-white rounded-md hover:shadow-sm border border-transparent hover:border-gray-200 truncate transition-all">
-              {chat.text}
-            </button>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center">
+            <Menu className="w-4 h-4 mr-2" /> Chats
+          </h2>
+          <button
+            type="button"
+            onClick={handleCreateNewChat}
+            disabled={isSending || isHydrating}
+            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded-md border border-[#1f7a6c]/30 text-[#1f7a6c] hover:bg-white disabled:opacity-60"
+          >
+            <Plus className="w-3.5 h-3.5" /> New
+          </button>
+        </div>
+        <div className="space-y-2 overflow-y-auto">
+          {sessions.map((chat) => (
+            <div
+              key={chat.sessionId}
+              className={`group w-full flex items-center gap-1 rounded-md border transition-all ${
+                chat.sessionId === sessionId
+                  ? "bg-white border-[#1f7a6c]/30 shadow-sm"
+                  : "border-transparent hover:border-gray-200"
+              }`}
+            >
+              <button
+                type="button"
+                onClick={() => handleSelectSession(chat.sessionId)}
+                className="flex-1 text-left px-3 py-2 text-sm text-gray-700 truncate"
+                title={chat.title}
+              >
+                {chat.title}
+              </button>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleDeleteSession(chat.sessionId);
+                }}
+                className="mr-1 p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Delete chat"
+                aria-label="Delete chat"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
           ))}
+
+          {sessions.length === 0 && (
+            <div className="text-xs text-gray-500 px-1">No chats yet. Start a new one.</div>
+          )}
         </div>
       </div>
 

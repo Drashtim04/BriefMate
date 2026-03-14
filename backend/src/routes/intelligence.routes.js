@@ -983,6 +983,44 @@ router.post('/chat/sessions', async (req, res, next) => {
   await proxyJson({ req, res, next, method: 'POST', targetPath: '/chat/sessions', body: req.body || {} });
 });
 
+router.get('/chat/sessions', async (req, res, next) => {
+  const params = new URLSearchParams();
+  if (req.query.limit) params.set('limit', String(req.query.limit));
+  if (req.query.status) params.set('status', String(req.query.status));
+  const qs = params.toString();
+
+  await proxyJson({
+    req,
+    res,
+    next,
+    method: 'GET',
+    targetPath: `/chat/sessions${qs ? `?${qs}` : ''}`,
+  });
+});
+
+router.patch('/chat/sessions/:sessionId', async (req, res, next) => {
+  const sessionId = encodeURIComponent(String(req.params.sessionId || ''));
+  await proxyJson({
+    req,
+    res,
+    next,
+    method: 'PATCH',
+    targetPath: `/chat/sessions/${sessionId}`,
+    body: req.body || {},
+  });
+});
+
+router.delete('/chat/sessions/:sessionId', async (req, res, next) => {
+  const sessionId = encodeURIComponent(String(req.params.sessionId || ''));
+  await proxyJson({
+    req,
+    res,
+    next,
+    method: 'DELETE',
+    targetPath: `/chat/sessions/${sessionId}`,
+  });
+});
+
 router.get('/chat/sessions/:sessionId/history', async (req, res, next) => {
   const sessionId = encodeURIComponent(String(req.params.sessionId || ''));
   const params = new URLSearchParams();

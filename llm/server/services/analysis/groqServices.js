@@ -117,7 +117,13 @@ async function runGroqJson({ model, temperature, system, user }) {
   if (!getGroq()) {
     return null;
   }
-  return dispatchGroqJson({ model, temperature, system, user });
+  try {
+    return await dispatchGroqJson({ model, temperature, system, user });
+  } catch (error) {
+    // Keep pipeline operational under provider throttling or transient network failures.
+    console.warn("[groq] request failed, using fallback:", error?.message || "unknown error");
+    return null;
+  }
 }
 
 async function sentimentService({ unified, model }) {
@@ -184,6 +190,11 @@ async function summarizerService({ unified, model }) {
     chunks.push(lines.slice(i, i + chunkSize));
   }
 
+  const maxGroqChunksRaw = Number.parseInt(String(process.env.GROQ_SUMMARY_MAX_CHUNKS || "3"), 10);
+  const maxGroqChunks = Number.isFinite(maxGroqChunksRaw)
+    ? Math.max(1, Math.min(maxGroqChunksRaw, 20))
+    : 3;
+
   const groq = getGroq();
   if (!groq) {
     return {
@@ -199,12 +210,15 @@ async function summarizerService({ unified, model }) {
   const summarized = [];
   for (let index = 0; index < chunks.length; index += 1) {
     const text = chunks[index].join("\n");
-    const response = await runGroqJson({
-      model,
-      temperature: TEMPERATURES.summarizer,
-      system: "You summarize meeting transcript chunks for CHRO use.",
-      user: `Summarize this transcript chunk in <=2 bullets. Return JSON {summary: string}.\n\n${text}`,
-    });
+    let response = null;
+    if (index < maxGroqChunks) {
+      response = await runGroqJson({
+        model,
+        temperature: TEMPERATURES.summarizer,
+        system: "You summarize meeting transcript chunks for CHRO use.",
+        user: `Summarize this transcript chunk in <=2 bullets. Return JSON {summary: string}.\n\n${text}`,
+      });
+    }
 
     summarized.push({
       index,
@@ -262,29 +276,33 @@ async function briefService({ rawSources, previousRiskLevel, unified, sentiment,
   });
 
   if (process.env.GROQ_API_KEY) {
-    const generated = await analyzeMeetingBriefWithLLM(
-      {
-        hrms: rawSources.hrms,
-        meet: rawSources.meet,
-        slack: rawSources.slack,
-      },
-      {
-        manualRequest: true,
-        meetingStartsAt: meetingAt || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-        previousRiskLevel,
-      }
-    );
+    try {
+      const generated = await analyzeMeetingBriefWithLLM(
+        {
+          hrms: rawSources.hrms,
+          meet: rawSources.meet,
+          slack: rawSources.slack,
+        },
+        {
+          manualRequest: true,
+          meetingStartsAt: meetingAt || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+          previousRiskLevel,
+        }
+      );
 
-    return {
-      ...generated,
-      brief: {
-        ...(generated.brief || {}),
-        generalContext,
-        lastInteractionContext: lastInteraction,
-        lastMeetingTakeaways,
-        relationshipStatus,
-      },
-    };
+      return {
+        ...generated,
+        brief: {
+          ...(generated.brief || {}),
+          generalContext,
+          lastInteractionContext: lastInteraction,
+          lastMeetingTakeaways,
+          relationshipStatus,
+        },
+      };
+    } catch (error) {
+      console.warn("[groq] brief generation failed, using fallback:", error?.message || "unknown error");
+    }
   }
 
   return {

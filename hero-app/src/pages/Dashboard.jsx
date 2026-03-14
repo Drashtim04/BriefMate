@@ -3,6 +3,7 @@ import { Users, Calendar, AlertTriangle, Activity } from "lucide-react";
 import { MetricCard } from "../components/MetricCard";
 import { SentimentChart } from "../components/SentimentChart";
 import { DepartmentPieChart } from "../components/DepartmentPieChart";
+import { DashboardAlerts } from "../components/DashboardAlerts";
 import { getDashboardSummary, listEmployees } from "../lib/api";
 
 function titleCase(value) {
@@ -261,6 +262,57 @@ export function Dashboard() {
     return Object.entries(counts).map(([name, value]) => ({ name, value }));
   }, [allEmployees]);
 
+  const alerts = useMemo(() => {
+    const items = [];
+
+    allEmployees.forEach((employee) => {
+      const risk = String(employee?.risk || "").trim();
+      const sentiment = String(employee?.sentiment || "").trim();
+      const deltaRisk30d = Number(employee?.deltaRisk30d || 0);
+
+      if (["Critical", "High", "Medium"].includes(risk)) {
+        items.push({
+          employeeEmail: employee?.email || employee?.employeeEmail || employee?.id || "unknown",
+          employee,
+          type: "risk-level",
+          severity: risk,
+          title: `${employee?.name || "Employee"}: ${risk} risk`,
+          description: `${employee?.name || "This employee"} currently has a ${risk.toLowerCase()} retention risk classification.`,
+          priority: risk === "Critical" ? 400 : risk === "High" ? 300 : 200,
+        });
+      }
+
+      if (Number.isFinite(deltaRisk30d) && deltaRisk30d >= 15) {
+        items.push({
+          employeeEmail: employee?.email || employee?.employeeEmail || employee?.id || "unknown",
+          employee,
+          type: "rising-risk",
+          severity: "High",
+          title: `${employee?.name || "Employee"}: rising risk trend`,
+          description: `Risk increased by ${deltaRisk30d.toFixed(1)} points over the last 30 days.`,
+          priority: 320,
+        });
+      }
+
+      const sentimentScore = Number(employee?.sentimentScoreRaw);
+      if (sentiment === "Negative" && Number.isFinite(sentimentScore) && sentimentScore <= 45) {
+        items.push({
+          employeeEmail: employee?.email || employee?.employeeEmail || employee?.id || "unknown",
+          employee,
+          type: "negative-sentiment",
+          severity: "Medium",
+          title: `${employee?.name || "Employee"}: negative sentiment`,
+          description: `Latest sentiment score is ${Math.round(sentimentScore)}/100 and trending negative.`,
+          priority: 210,
+        });
+      }
+    });
+
+    return items
+      .sort((a, b) => b.priority - a.priority)
+      .slice(0, 8);
+  }, [allEmployees]);
+
   return (
     <>
       {modalEmployee && (
@@ -289,10 +341,11 @@ export function Dashboard() {
 
         {isLoading && <div className="text-sm text-gray-500">Loading dashboard data...</div>}
 
-        {/* SECTION 2 & 3 – Charts */}
+        {/* SECTION 2 & 3 – Charts + Alerts */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <SentimentChart data={sentimentData} />
           <DepartmentPieChart data={departmentData} />
+          <DashboardAlerts alerts={alerts} onSelectEmployee={(person) => setModalEmployee(person)} />
         </div>
 
         {/* SECTION 4 – Recent Employee Insights (clickable rows) */}

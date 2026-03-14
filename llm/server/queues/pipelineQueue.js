@@ -349,8 +349,11 @@ function pickIdentityCandidate(rawSources, employeeEmail) {
   );
 }
 
-async function runAnalysisPipeline({ unified, rawSources, reason, model, meetingAt }) {
-  const employeeEmail = unified.employee.email.toLowerCase();
+async function runAnalysisPipeline({ unified, rawSources, employeeEmail: requestedEmployeeEmail, reason, model, meetingAt }) {
+  const employeeEmail = String(requestedEmployeeEmail || unified?.employee?.email || "").toLowerCase();
+  if (!employeeEmail) {
+    throw new Error("missing employee email for analysis pipeline");
+  }
   const previousProfile = await getLatestProfile(employeeEmail);
   const previousRiskLevel = previousProfile?.analysis?.retentionRisk?.level || null;
   const scoringMode = getScoringMode();
@@ -548,7 +551,7 @@ async function runInlinePipeline({ dataRoot, employeeEmail, reason, model, meeti
     cursors: rawSources.cursors || {},
     payload: rawSources,
   });
-  return runAnalysisPipeline({ unified, rawSources, reason, model, meetingAt });
+  return runAnalysisPipeline({ unified, rawSources, employeeEmail, reason, model, meetingAt });
 }
 
 async function startPipelineQueues({ redisUrl, dataRoot, model, mode = "auto" }) {
@@ -630,6 +633,7 @@ async function startPipelineQueues({ redisUrl, dataRoot, model, mode = "auto" })
             {
               unified,
               rawSources,
+              employeeEmail,
               reason,
               meetingAt: job.data.meetingAt || null,
             },
@@ -650,6 +654,7 @@ async function startPipelineQueues({ redisUrl, dataRoot, model, mode = "auto" })
           return runAnalysisPipeline({
             unified: job.data.unified,
             rawSources: job.data.rawSources,
+            employeeEmail: job.data.employeeEmail,
             reason: job.data.reason,
             model,
             meetingAt: job.data.meetingAt || null,

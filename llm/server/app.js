@@ -20,6 +20,9 @@ import {
   listSentimentHistory,
   listRiskHistory,
   getChatSession,
+  listChatSessions,
+  updateChatSession,
+  deleteChatSession,
   createChatSession,
   appendChatMessage,
   listChatMessages,
@@ -65,6 +68,14 @@ const chatSchema = z.object({
 const createChatSessionSchema = z.object({
   sessionId: z.string().min(3).max(120).optional(),
   status: z.enum(["active", "archived"]).optional(),
+  title: z.string().min(1).max(160).optional(),
+  userId: z.string().min(1).max(120).optional(),
+});
+
+const updateChatSessionSchema = z.object({
+  status: z.enum(["active", "archived"]).optional(),
+  title: z.string().max(160).optional(),
+  userId: z.string().max(120).optional(),
 });
 
 const bootstrapSchema = z.object({
@@ -119,6 +130,12 @@ function normalizeEmailList(values = []) {
   );
 }
 
+function toSessionTitle(value, maxLength = 80) {
+  const text = String(value || "").trim().replace(/\s+/g, " ");
+  if (!text) return "New Chat";
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}...` : text;
+}
+
 function toTimestamp(value) {
   const time = new Date(value || 0).getTime();
   return Number.isFinite(time) ? time : 0;
@@ -147,6 +164,28 @@ function buildPastMeetingInsights(rows = [], meetingAt) {
     lastMeetingAt: past[0]?.meetingAt || past[0]?.updatedAt || null,
     recentMeetings,
   };
+}
+
+function inferHttpStatusFromError(error) {
+  const direct = Number(error?.statusCode || error?.status || error?.response?.status);
+  if (Number.isFinite(direct) && direct >= 400 && direct <= 599) {
+    return direct;
+  }
+
+  const message = String(error?.message || "");
+  const match = message.match(/\b(4\d\d|5\d\d)\b/);
+  if (match) {
+    const parsed = Number(match[1]);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  if (/rate[_ -]?limit|too many requests|rate limit/i.test(message)) {
+    return 429;
+  }
+
+  return 400;
 }
 
 async function buildParticipantBriefInsight({ employeeEmail, meetingAt }) {
@@ -321,7 +360,13 @@ app.post("/pipeline/run", async (req, res) => {
     });
     res.status(202).json({ accepted: true, jobId: job.id });
   } catch (error) {
-    res.status(400).json({ error: error.message || "invalid request" });
+    const status = inferHttpStatusFromError(error);
+    res.status(status).json({
+      error: {
+        message: error?.message || "invalid request",
+        code: status === 429 ? "UPSTREAM_RATE_LIMIT" : "PIPELINE_RUN_FAILED",
+      },
+    });
   }
 });
 
@@ -625,17 +670,106 @@ app.post("/chat/sessions", async (req, res) => {
       status: parsed.status || "active",
     });
 
+    if (parsed.title || parsed.userId) {
+      await updateChatSession(sessionId, {
+        title: parsed.title,
+        userId: parsed.userId,
+        status: parsed.status,
+      });
+    }
+
+    const resolved = await getChatSession(sessionId);
+
     return res.status(201).json({
       ok: true,
       data: {
-        sessionId: session?.sessionId || sessionId,
-        status: session?.status || "active",
-        startedAt: session?.startedAt || new Date().toISOString(),
-        lastMessageAt: session?.lastMessageAt || new Date().toISOString(),
+        sessionId: resolved?.sessionId || session?.sessionId || sessionId,
+        status: resolved?.status || session?.status || "active",
+        title: resolved?.title || null,
+        userId: resolved?.userId || null,
+        startedAt: resolved?.startedAt || session?.startedAt || new Date().toISOString(),
+        lastMessageAt: resolved?.lastMessageAt || session?.lastMessageAt || new Date().toISOString(),
       },
     });
   } catch (error) {
     return res.status(400).json({ error: error.message || "failed to create chat session" });
+  }
+});
+
+app.get("/chat/sessions", async (req, res) => {
+  try {
+    const limit = Math.max(1, Math.min(Number(req.query.limit || 50), 200));
+    const status = req.query.status ? String(req.query.status).toLowerCase() : undefined;
+    const rows = await listChatSessions({ limit, status });
+
+    return res.json({
+      count: rows.length,
+      data: rows.map((row) => ({
+        sessionId: row.sessionId,
+        title: row.title || null,
+        status: row.status || "active",
+        startedAt: row.startedAt || null,
+        lastMessageAt: row.lastMessageAt || null,
+        userId: row.userId || null,
+      })),
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "failed to list chat sessions" });
+  }
+});
+
+app.patch("/chat/sessions/:sessionId", async (req, res) => {
+  try {
+    const sessionId = String(req.params.sessionId || "").trim();
+    if (!sessionId) {
+      return res.status(400).json({ error: "sessionId is required" });
+    }
+
+    const parsed = updateChatSessionSchema.parse(req.body || {});
+    const session = await updateChatSession(sessionId, parsed);
+
+    if (!session) {
+      return res.status(404).json({ error: "chat session not found" });
+    }
+
+    return res.json({
+      ok: true,
+      data: {
+        sessionId: session.sessionId,
+        title: session.title || null,
+        status: session.status || "active",
+        startedAt: session.startedAt || null,
+        lastMessageAt: session.lastMessageAt || null,
+        userId: session.userId || null,
+      },
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "failed to update chat session" });
+  }
+});
+
+app.delete("/chat/sessions/:sessionId", async (req, res) => {
+  try {
+    const sessionId = String(req.params.sessionId || "").trim();
+    if (!sessionId) {
+      return res.status(400).json({ error: "sessionId is required" });
+    }
+
+    const deleted = await deleteChatSession(sessionId);
+    if (!deleted) {
+      return res.status(404).json({ error: "chat session not found" });
+    }
+
+    return res.json({
+      ok: true,
+      data: {
+        sessionId: deleted.sessionId,
+        deleted: true,
+        deletedMessageCount: Number(deleted.deletedMessageCount || 0),
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "failed to delete chat session" });
   }
 });
 
@@ -681,6 +815,11 @@ app.post("/chat/query", async (req, res) => {
     const sessionId = String(parsed.sessionId || randomUUID());
 
     await createChatSession({ sessionId, status: "active" });
+    const session = await getChatSession(sessionId);
+    if (!session?.title) {
+      await updateChatSession(sessionId, { title: toSessionTitle(parsed.query) });
+    }
+
     await appendChatMessage({
       sessionId,
       role: "user",

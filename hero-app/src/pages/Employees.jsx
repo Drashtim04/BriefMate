@@ -182,7 +182,7 @@ export function Employees() {
     setIsSignalSyncing(true);
 
     try {
-      const result = await syncLatestSignals({ runPipeline: true, transcriptLimit: 25 });
+      const result = await syncLatestSignals({ runPipeline: false, transcriptLimit: 25 });
       const transcriptsSeen = Number(result?.fireflies?.transcriptsSeen || 0);
       const slackMessagesSeen = Number(result?.slackMessages?.messagesSeen || 0);
       const slackChannelsProcessed = Number(result?.slackMessages?.channelsProcessed || 0);
@@ -191,7 +191,7 @@ export function Employees() {
       const warningCount = Array.isArray(result?.warnings) ? result.warnings.length : 0;
 
       setRefreshNotice(
-        `Latest signals synced: transcripts ${transcriptsSeen}, Slack messages ${slackMessagesSeen} across ${slackChannelsProcessed} channels, pipeline ${accepted}/${total}, warnings ${warningCount}.`
+        `Latest signals synced: transcripts ${transcriptsSeen}, Slack messages ${slackMessagesSeen} across ${slackChannelsProcessed} channels, bulk pipeline disabled (${accepted}/${total}), warnings ${warningCount}. Use per-employee Refresh for targeted AI runs.`
       );
 
       await loadEmployees({ withLoader: false });

@@ -70,6 +70,8 @@ async function initMongo({ mongoUri, mongoDbName, useMemoryStore }) {
     }
   );
   await mongoDb.collection("chat_sessions").createIndex({ lastMessageAt: -1 });
+  await mongoDb.collection("chat_sessions").createIndex({ status: 1, lastMessageAt: -1 });
+  await mongoDb.collection("chat_sessions").createIndex({ userId: 1, lastMessageAt: -1 });
   await mongoDb.collection("chat_messages").createIndex(
     { sessionId: 1, messageIndex: 1 },
     {
@@ -104,6 +106,21 @@ function isMissingIdentityValue(value) { const normalized = String(value || "").
 
 function pickIdentityValue(incoming, existing, fallback = "Unknown") { if (!isMissingIdentityValue(incoming)) return String(incoming).trim(); if (!isMissingIdentityValue(existing)) return String(existing).trim(); return fallback; }
 
+function isPlaceholderEmployeeEmail(value) {
+  const email = String(value || "").trim().toLowerCase();
+  if (!email) {
+    return true;
+  }
+  if (!email.includes("@")) {
+    return true;
+  }
+  return (
+    email === "unknown@company.com" ||
+    email === "unknown@unknown.local" ||
+    email.startsWith("unknown@")
+  );
+}
+
 async function getLatestProfile(employeeEmail) {
   if (!employeeEmail) {
     return null;
@@ -128,6 +145,9 @@ async function upsertEmployeeIdentity(identityDoc) {
   }
 
   const employeeEmail = String(identityDoc.employeeEmail).toLowerCase();
+  if (isPlaceholderEmployeeEmail(employeeEmail)) {
+    return null;
+  }
   const incomingIdentity = {
     employeeId: identityDoc.employeeId || identityDoc.id,
     displayName: identityDoc.displayName || identityDoc.fullName || identityDoc.name,
@@ -201,9 +221,10 @@ async function upsertEmployeeIdentity(identityDoc) {
 
 async function listEmployees() {
   if (!isMongoReady()) {
-    return [...memory.employees];
+    return memory.employees.filter((item) => !isPlaceholderEmployeeEmail(item?.employeeEmail));
   }
-  return mongoDb.collection("employees").find({}).toArray();
+  const rows = await mongoDb.collection("employees").find({}).toArray();
+  return rows.filter((item) => !isPlaceholderEmployeeEmail(item?.employeeEmail));
 }
 
 async function getSyncState(employeeEmail) {
@@ -362,6 +383,134 @@ async function createChatSession({ sessionId, status = "active" } = {}) {
   );
 
   return mongoDb.collection("chat_sessions").findOne({ sessionId: key });
+}
+
+async function listChatSessions({ limit = 50, status } = {}) {
+  const safeLimit = Math.max(1, Math.min(Number(limit || 50), 200));
+  const statusFilter = status ? String(status).toLowerCase() : "";
+
+  if (!isMongoReady()) {
+    let rows = [...memory.chatSessions];
+    if (statusFilter) {
+      rows = rows.filter((item) => String(item?.status || "").toLowerCase() === statusFilter);
+    }
+
+    return rows
+      .sort((a, b) => new Date(b?.lastMessageAt || 0).getTime() - new Date(a?.lastMessageAt || 0).getTime())
+      .slice(0, safeLimit);
+  }
+
+  const query = statusFilter ? { status: statusFilter } : {};
+  return mongoDb
+    .collection("chat_sessions")
+    .find(query)
+    .sort({ lastMessageAt: -1 })
+    .limit(safeLimit)
+    .toArray();
+}
+
+async function updateChatSession(sessionId, patch = {}) {
+  const key = toSafeSessionId(sessionId);
+  if (!key) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const next = { updatedAt: now };
+
+  if (patch?.status) {
+    const safeStatus = String(patch.status).toLowerCase();
+    if (["active", "archived"].includes(safeStatus)) {
+      next.status = safeStatus;
+    }
+  }
+
+  if (patch?.title !== undefined) {
+    const title = String(patch.title || "").trim();
+    next.title = title || null;
+  }
+
+  if (patch?.userId !== undefined) {
+    const userId = String(patch.userId || "").trim();
+    next.userId = userId || null;
+  }
+
+  if (!isMongoReady()) {
+    const index = memory.chatSessions.findIndex((item) => item.sessionId === key);
+    if (index >= 0) {
+      memory.chatSessions[index] = { ...memory.chatSessions[index], ...next };
+      return memory.chatSessions[index];
+    }
+
+    const created = {
+      sessionId: key,
+      status: next.status || "active",
+      startedAt: now,
+      lastMessageAt: now,
+      nextMessageIndex: 0,
+      createdAt: now,
+      ...next,
+    };
+    memory.chatSessions.push(created);
+    return created;
+  }
+
+  await mongoDb.collection("chat_sessions").updateOne(
+    { sessionId: key },
+    {
+      $set: next,
+      $setOnInsert: {
+        sessionId: key,
+        startedAt: now,
+        lastMessageAt: now,
+        nextMessageIndex: 0,
+        createdAt: now,
+      },
+    },
+    { upsert: true }
+  );
+
+  return mongoDb.collection("chat_sessions").findOne({ sessionId: key });
+}
+
+async function deleteChatSession(sessionId) {
+  const key = toSafeSessionId(sessionId);
+  if (!key) {
+    return null;
+  }
+
+  if (!isMongoReady()) {
+    const sessionIndex = memory.chatSessions.findIndex((item) => item.sessionId === key);
+    if (sessionIndex < 0) {
+      return null;
+    }
+
+    memory.chatSessions.splice(sessionIndex, 1);
+    const beforeCount = memory.chatMessages.length;
+    memory.chatMessages = memory.chatMessages.filter((item) => item.sessionId !== key);
+    const deletedMessageCount = beforeCount - memory.chatMessages.length;
+
+    return {
+      sessionId: key,
+      deleted: true,
+      deletedMessageCount,
+    };
+  }
+
+  const [sessionDelete, messageDelete] = await Promise.all([
+    mongoDb.collection("chat_sessions").deleteOne({ sessionId: key }),
+    mongoDb.collection("chat_messages").deleteMany({ sessionId: key }),
+  ]);
+
+  if (Number(sessionDelete?.deletedCount || 0) < 1) {
+    return null;
+  }
+
+  return {
+    sessionId: key,
+    deleted: true,
+    deletedMessageCount: Number(messageDelete?.deletedCount || 0),
+  };
 }
 
 async function updateChatSessionActivity(sessionId, patch = {}) {
@@ -1407,8 +1556,20 @@ async function queryProfiles(rawFilter) {
 }
 
 async function getDashboardSummary() {
-  const rows = await queryProfiles({ limit: 250 });
-  const latestRows = dedupeLatestProfiles(rows);
+  const roster = await listEmployees();
+  const visibleRoster = (Array.isArray(roster) ? roster : []).filter(
+    (row) => !isPlaceholderEmployeeEmail(row?.employeeEmail)
+  );
+
+  const latestRows = [];
+  for (const employee of visibleRoster) {
+    const latest = await getLatestProfile(String(employee?.employeeEmail || "").toLowerCase());
+    if (latest) {
+      latestRows.push(mapProfileForRead(latest));
+    }
+  }
+
+  const visibleRows = latestRows.filter((row) => !isPlaceholderEmployeeEmail(row?.employeeEmail));
 
   const numericMean = (values = []) => {
     const numeric = values.filter((value) => Number.isFinite(Number(value))).map((value) => Number(value));
@@ -1418,33 +1579,33 @@ async function getDashboardSummary() {
     return Number((numeric.reduce((sum, value) => sum + value, 0) / numeric.length).toFixed(2));
   };
 
-  const todayMeetings = latestRows
+  const todayMeetings = visibleRows
     .map((item) => item?.analysis?.brief?.meetingAt)
     .filter(Boolean)
     .slice(0, 10);
 
   const counts = { low: 0, medium: 0, high: 0, critical: 0 };
-  latestRows.forEach((row) => {
+  visibleRows.forEach((row) => {
     const key = String(row?.analysis?.retentionRisk?.level || "low").toLowerCase();
     if (counts[key] !== undefined) {
       counts[key] += 1;
     }
   });
 
-  const totalEmployees = latestRows.length;
+  const totalEmployees = visibleRoster.length;
   const atRiskEmployees = counts.high + counts.critical;
-  const averageHealthScore = numericMean(latestRows.map((row) => row?.analysis?.health?.score));
-  const averageRiskScore = numericMean(latestRows.map((row) => row?.analysis?.retentionRisk?.score));
-  const averageConfidence = numericMean(latestRows.map((row) => row?.analysis?.components?.confidence));
-  const risingRiskEmployees = latestRows.filter(
+  const averageHealthScore = numericMean(visibleRows.map((row) => row?.analysis?.health?.score));
+  const averageRiskScore = numericMean(visibleRows.map((row) => row?.analysis?.retentionRisk?.score));
+  const averageConfidence = numericMean(visibleRows.map((row) => row?.analysis?.components?.confidence));
+  const risingRiskEmployees = visibleRows.filter(
     (row) => Number(row?.analysis?.temporal?.deltaRisk30d) >= 15
   ).length;
-  const fallingSentimentEmployees = latestRows.filter(
+  const fallingSentimentEmployees = visibleRows.filter(
     (row) => Number(row?.analysis?.temporal?.deltaSentiment7d) <= -20
   ).length;
 
   return {
-    employees: latestRows.map((row) => ({
+    employees: visibleRows.map((row) => ({
       email: row.employeeEmail,
       name: row.employeeName,
       sentimentScore: row?.analysis?.sentiment?.score,
@@ -1484,6 +1645,9 @@ export {
   markColdBootCompleted,
   getLatestProfile,
   getChatSession,
+  listChatSessions,
+  updateChatSession,
+  deleteChatSession,
   createChatSession,
   appendChatMessage,
   listChatMessages,

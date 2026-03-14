@@ -29,7 +29,11 @@ async function request(path, options = {}) {
   }
 
   if (!response.ok) {
-    const message = data?.error?.message || data?.message || `Request failed (${response.status})`;
+    const message =
+      (typeof data?.error === "string" ? data.error : "") ||
+      data?.error?.message ||
+      data?.message ||
+      `Request failed (${response.status})`;
     const err = new Error(message);
     err.status = response.status;
     err.code = data?.error?.code || data?.code || "REQUEST_FAILED";
@@ -392,6 +396,40 @@ export async function refreshGoogleCalendarMeetings(options = {}) {
   };
 }
 
+export async function syncCalendarEventsIngest(options = {}) {
+  const body = {
+    calendarId: String(options.calendarId || "primary"),
+    pastDays: Number.isFinite(Number(options.pastDays)) ? Number(options.pastDays) : 1,
+    futureDays: Number.isFinite(Number(options.futureDays)) ? Number(options.futureDays) : 14,
+  };
+
+  const payload = await request("/api/ingest/calendar/events", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+  return payload?.data || {};
+}
+
+export async function syncFirefliesTranscripts(options = {}) {
+  const body = {
+    limit: Number.isFinite(Number(options.limit)) ? Number(options.limit) : 100,
+    skip: Number.isFinite(Number(options.skip)) ? Number(options.skip) : 0,
+    syncHrToCalendar:
+      options.syncHrToCalendar === undefined ? true : Boolean(options.syncHrToCalendar),
+  };
+
+  if (options.fromDate) body.fromDate = String(options.fromDate);
+  if (options.toDate) body.toDate = String(options.toDate);
+
+  const payload = await request("/api/ingest/fireflies/transcripts", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+  return payload?.data || {};
+}
+
 export async function getMeetingTranscript(meetingId, q = "") {
   const query = new URLSearchParams();
   if (q) query.set("q", q);
@@ -429,6 +467,50 @@ export async function createChatSession(sessionId = "") {
   });
 
   return payload?.data || {};
+}
+
+export async function listChatSessions(options = {}) {
+  const params = new URLSearchParams();
+  const limit = Number(options?.limit);
+  const status = String(options?.status || "").trim().toLowerCase();
+
+  if (Number.isFinite(limit) && limit > 0) {
+    params.set("limit", String(Math.min(limit, 200)));
+  }
+  if (status) {
+    params.set("status", status);
+  }
+
+  const qs = params.toString();
+  const payload = await request(`/api/intelligence/chat/sessions${qs ? `?${qs}` : ""}`);
+  return Array.isArray(payload?.data) ? payload.data : [];
+}
+
+export async function updateChatSession(sessionId, patch = {}) {
+  const key = String(sessionId || "").trim();
+  if (!key) {
+    throw new Error("Session ID is required");
+  }
+
+  const payload = await request(`/api/intelligence/chat/sessions/${encodeURIComponent(key)}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch && typeof patch === "object" ? patch : {}),
+  });
+
+  return payload?.data || null;
+}
+
+export async function deleteChatSession(sessionId) {
+  const key = String(sessionId || "").trim();
+  if (!key) {
+    throw new Error("Session ID is required");
+  }
+
+  const payload = await request(`/api/intelligence/chat/sessions/${encodeURIComponent(key)}`, {
+    method: "DELETE",
+  });
+
+  return payload?.data || null;
 }
 
 export async function getChatSessionHistory(sessionId, limit = 120) {
