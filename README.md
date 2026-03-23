@@ -52,10 +52,15 @@ Health = 0.30 × Sentiment + 0.40 × (100 − Risk) + 0.20 × Engagement + 0.10 
 ## Tech Stack
 
 **Frontend:** React, Vite, Tailwind CSS
+
 **Backend:** Node.js, Express
+
 **AI/LLM:** Groq (Llama models)
+
 **Database:** MongoDB
+
 **Cache & Queue:** Redis, BullMQ
+
 **Integrations:** Slack API, BambooHR API, Google Calendar, Fireflies
 
 ---
